@@ -151,6 +151,25 @@ To see what an app needs, run `apkrunner apis app.apk`.
 **Testing without a window:** `--screenshot out.png` renders the app to an image, and
 `--tap X,Y` (repeatable) taps the screen first. This is what CI uses.
 
+## 3c. Updates
+
+Apk-Runner checks GitHub for a new release when it starts, at most once a day and with
+a 2-second timeout, so it never slows you down or fails offline. When a newer version
+exists, you'll see:
+
+```
+Apk-Runner v0.5.0 is available (you have 0.4.0). Run `apkrunner update` to install it.
+```
+
+```bash
+apkrunner update          # download the build for your OS/CPU and replace this one
+apkrunner update --force  # reinstall the latest even if up to date
+```
+
+To turn off the startup check, use `--no-update-check` or set the environment variable
+`APKRUNNER_NO_UPDATE_CHECK=1`. On a Mac where `apkrunner` is in `/usr/local/bin`, run
+`sudo apkrunner update` if you get a permission error.
+
 ## 4. Troubleshooting
 
 | Problem | Fix |

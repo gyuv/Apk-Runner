@@ -18,8 +18,10 @@ jobs:
             asset: apkrunner-windows-x64.exe
           - os: macos-15-intel
             asset: apkrunner-macos-intel.dmg
+            raw: apkrunner-macos-intel
           - os: macos-latest
             asset: apkrunner-macos-apple-silicon.dmg
+            raw: apkrunner-macos-apple-silicon
           - os: ubuntu-latest
             asset: apkrunner-linux-x64
     runs-on: ${{ matrix.os }}
@@ -45,6 +47,7 @@ jobs:
           mkdir -p dmg && cp dist/apkrunner dmg/
           cp README.md dmg/README.md
           hdiutil create -volname "Apk-Runner" -srcfolder dmg -ov -format UDZO ${{ matrix.asset }}
+          cp dist/apkrunner ${{ matrix.raw }}
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: cp dist/apkrunner ${{ matrix.asset }}
@@ -57,7 +60,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
-          path: ${{ matrix.asset }}
+          path: |
+            ${{ matrix.asset }}
+            ${{ matrix.raw || matrix.asset }}
 
   release:
     needs: build
