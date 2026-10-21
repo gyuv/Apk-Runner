@@ -69,6 +69,11 @@ def cmd_convert(a):
     return 0
 
 
+def cmd_update(a):
+    from .updater import update
+    return update(force=a.force)
+
+
 def cmd_doctor(a):
     from .inspect import host_arch
     import platform
@@ -91,6 +96,7 @@ def cmd_run(a):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="apkrunner", description="Run and inspect Android apps on desktop.")
     p.add_argument("--version", action="version", version=__version__)
+    p.add_argument("--no-update-check", action="store_true", help="don't check GitHub for a newer version")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     i = sub.add_parser("inspect", help="analyse an APK/XAPK/APKM for this host")
@@ -120,6 +126,10 @@ def main(argv=None):
     c.add_argument("-o", "--out", default="app.jar")
     c.set_defaults(fn=cmd_convert)
 
+    u = sub.add_parser("update", help="download and install the latest Apk-Runner release")
+    u.add_argument("--force", action="store_true", help="reinstall even if up to date")
+    u.set_defaults(fn=cmd_update)
+
     d = sub.add_parser("doctor", help="show which run backends are available")
     d.set_defaults(fn=cmd_doctor)
 
@@ -129,9 +139,16 @@ def main(argv=None):
     r.add_argument("--avd", help="emulator AVD name (default: first found)")
     r.add_argument("--full", action="store_true", help="disable lite emulator profile")
     r.add_argument("--no-window", action="store_true", help="don't open the scrcpy window")
+    r.add_argument("--activity", help="java backend: activity class to start")
+    r.add_argument("--screenshot", help="java backend: render headless to this PNG and exit")
+    r.add_argument("--tap", action="append", metavar="X,Y", help="java backend: tap before the screenshot")
     r.set_defaults(fn=cmd_run)
 
     a = p.parse_args(argv)
+    from . import updater
+    updater.cleanup_old()
+    if not a.no_update_check and a.cmd != "update":
+        updater.check_on_start()
     return a.fn(a)
 
 

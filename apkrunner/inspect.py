@@ -35,6 +35,7 @@ def inspect(path, arch=None):
     arch = arch or host_arch()
     info = {"path": path, "host": arch, "splits": [], "abis": set(),
             "dex": 0, "permissions": [], "package": None}
+    current = None
     for name, z in _open_apks(path):
         names = z.namelist()
         info["splits"].append(name)
@@ -51,8 +52,18 @@ def inspect(path, arch=None):
                 info["target_sdk"] = attrs.get("targetSdkVersion")
             elif tag == "uses-permission":
                 info["permissions"].append(attrs.get("name"))
-            elif tag == "activity" and depth == 2 and "main_activity" not in info:
-                info["main_activity"] = attrs.get("name")
+            elif tag in ("activity", "activity-alias") and depth == 2:
+                current = attrs.get("targetActivity") or attrs.get("name")
+                info.setdefault("main_activity", current)
+            elif tag == "action" and attrs.get("name") == "android.intent.action.MAIN" and current:
+                if not info.get("_launcher"):
+                    info["main_activity"], info["_launcher"] = current, True
+    info.pop("_launcher", None)
+    act, pkg = info.get("main_activity"), info["package"]
+    if act and pkg and act.startswith("."):
+        info["main_activity"] = pkg + act
+    elif act and pkg and "." not in act:
+        info["main_activity"] = pkg + "." + act
     info["abis"] = sorted(info["abis"])
     info["verdict"], info["abi"] = verdict(info["abis"], arch)
     return info
