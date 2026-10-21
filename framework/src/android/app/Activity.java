@@ -3,7 +3,9 @@ package android.app;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.widget.FrameLayout;
 import com.apkrunner.host.Host;
 import com.apkrunner.host.UiThread;
 
@@ -26,6 +28,15 @@ public class Activity extends Context {
     public Intent getIntent() { return intent; }
     public void setIntent(Intent i) { intent = i; }
     public void setContentView(View v) { content = v; Host.onContentChanged(this); }
+
+    public void setContentView(int layoutId) {
+        FrameLayout root = new FrameLayout(this);
+        LayoutInflater.from(this).inflate(layoutId, root, true);
+        setContentView(root);
+    }
+
+    public LayoutInflater getLayoutInflater() { return LayoutInflater.from(this); }
+    public void setTheme(int resid) {}
     public View getContentView() { return content; }
 
     @SuppressWarnings("unchecked")

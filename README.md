@@ -123,33 +123,49 @@ Android system underneath, and it works the same on Windows, Intel Macs, Apple S
 Macs and Linux.
 
 ```bash
-apkrunner run samples/hello/hello.apk --backend java
+apkrunner run app.apk --backend java
+apkrunner run samples/notes/notes.apk --backend java   # XML layouts + resources sample
+apkrunner run samples/hello/hello.apk --backend java   # views built in code
+apkrunner preview app.apk activity_main                # render one layout from any APK
 ```
 
-![Sample app running on the Java backend](docs/java-backend.png)
+| Notes sample (XML layouts, resources, typing) | Hello sample (code-built views, canvas) |
+|---|---|
+| ![Notes sample](docs/notes-sample.png) | ![Hello sample](docs/java-backend.png) |
 
 Requirements: **Java 11 or newer** ([Adoptium](https://adoptium.net/) is free).
-Press `Esc` for Android's Back button.
+Controls: click = tap, drag = swipe, the mouse wheel scrolls, typing goes into the
+focused text field, and `Esc` is Android's Back button.
 
-**What works today:** `Activity` lifecycle, `setContentView` with views built in code,
-`View`, `ViewGroup`, `LinearLayout` (including weights), `FrameLayout`, `TextView`,
-`Button`, `Toast`, custom views with `onDraw` (`Canvas` and `Paint`: rects, circles,
-ovals, lines, text), touch and click events, `Handler`/`postDelayed`, `Bundle`,
-`Intent` (starting activities), `Log`, `Build`, `Color`, `DisplayMetrics`.
+### What works today
 
-**Not yet:** XML layouts and `resources.arsc` (so `R.layout`/`R.string` don't work
-yet), images, `EditText`/keyboard input, scrolling, `RecyclerView`, services, OpenGL,
-sound, and native `.so` libraries. Most store apps use some of these, so for now they
-fail with a clear message naming the missing Android class, for example:
+| Area | Supported |
+|---|---|
+| App lifecycle | `Activity` (onCreate → onResume, finish, Back), `startActivity` with `Intent` extras, `Handler`/`postDelayed`, `runOnUiThread` |
+| Resources | `resources.arsc`: strings, formatted strings, plurals, string/int arrays, colors, color state lists, dimensions (dp/sp/pt/in/mm), integers, booleans; best match for a phone (portrait, light mode, mdpi, default language, API ≤ 34); `R.*` IDs, `getIdentifier` |
+| Layouts | Compiled XML layouts via `setContentView(R.layout.x)` and `LayoutInflater`, `<include>`, `<merge>`, `android:onClick`, custom app views with `(Context, AttributeSet)` constructors, `obtainStyledAttributes`/`TypedArray` |
+| Layout managers | `LinearLayout` (weights, gravity), `RelativeLayout` (all positioning rules), `FrameLayout` (gravity), `ScrollView` |
+| Widgets | `TextView`, `Button`, `EditText` (keyboard, hint, password, `TextWatcher`), `CheckBox`, `RadioButton`, `Switch`, `ImageView` (all scale types), `ImageButton`, `Space`, `Toast` |
+| Graphics | PNG/JPEG/GIF images with density scaling, `Bitmap`, `BitmapFactory`, XML `shape`, `selector`, `layer-list`, `inset`, `ripple`, `bitmap`; `Canvas` and `Paint` (rects, rounded rects, circles, ovals, lines, text, bitmaps) |
+
+### Not yet
+
+Themes and styles (`style=`, `?attr/`, `textAppearance`), vector drawables, WebP
+images, `RecyclerView`/`ListView`, `ConstraintLayout`, fragments, menus, dialogs,
+`SharedPreferences`, databases, services, notifications, OpenGL, sound and native
+`.so` libraries. Unsupported widgets in a layout show as empty placeholders, with a
+warning, so the rest of the screen still appears. Missing Android classes stop the app
+with a clear message naming the class:
 
 ```
-This app needs the Android class android.content.ServiceConnection, which Apk-Runner does not implement yet.
+This app needs the Android class android.view.Menu, which Apk-Runner does not implement yet.
 ```
 
 To see what an app needs, run `apkrunner apis app.apk`.
 
-**Testing without a window:** `--screenshot out.png` renders the app to an image, and
-`--tap X,Y` (repeatable) taps the screen first. This is what CI uses.
+**Testing without a window:** `--screenshot out.png` renders to an image, `--tap X,Y`
+and `--type TEXT` (repeatable, run in order) interact first, and `--dump` prints the
+view tree. CI uses these.
 
 ## 3c. Updates
 
@@ -187,8 +203,8 @@ To turn off the startup check, use `--no-update-check` or set the environment va
    - DEX reader and framework API usage report (`apis`). **(done, v0.3)**
    - DEX → JVM `.jar` conversion (`convert`). **(done, v0.3)**
    - Android framework core on Java: Activity, View, layouts, Canvas, touch, Toast, desktop window. **(done, v0.4)**
-   - Resources: binary XML layouts, `resources.arsc`, `R.*` IDs, images. *(next)*
-   - `EditText` and keyboard input, scrolling, `RecyclerView`, `SharedPreferences`, SQLite.
+   - Resources: `resources.arsc`, compiled XML layouts, `R.*` IDs, images, XML drawables; `RelativeLayout`, `ScrollView`, `EditText`, `CheckBox`, `Switch`, `ImageView`. **(done, v0.5)**
+   - Themes and styles, `RecyclerView`/`ListView`, `SharedPreferences`, dialogs and menus, AppCompat/AndroidX support. *(next)*
 3. Native x86_64 `.so` loading without a VM (ELF loader + bionic shim), with GLES through ANGLE.
 4. ARM → x86 translation, so ARM-only apps run without a VM on Intel and Windows.
 
@@ -198,7 +214,9 @@ Steps 2–4 are a large research effort (Mac.apk itself is about 3,000 files). C
 
 ```bash
 python -m unittest discover -s tests -t .   # tests (the Java backend test needs a JDK)
-python scripts/build_sample.py              # rebuild samples/hello/hello.apk
+python scripts/build_sample.py hello        # rebuild samples/hello/hello.apk
+python scripts/build_sample.py notes        # rebuild samples/notes/notes.apk (needs aapt2 +
+                                            #   android.jar: set ANDROID_HOME or pass --aapt2/--android-jar)
 pip install pyinstaller && pyinstaller --onefile --name apkrunner --paths . scripts/apkrunner_entry.py
 ```
 

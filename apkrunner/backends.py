@@ -121,12 +121,16 @@ class JavaRuntime:
         if not activity:
             raise SystemExit("No launcher activity found; pass --activity.")
         cmd = ["java", "-cp", os.pathsep.join([framework_jar(), app_jar]),
-               "com.apkrunner.host.Host", "--package", info["package"]]
+               "com.apkrunner.host.Host", "--package", info["package"], "--apk", os.path.abspath(apk)]
         if opts.screenshot:
             cmd += ["--screenshot", opts.screenshot]
-        for t in opts.tap or []:
-            cmd += ["--tap", t]
-        return subprocess.call(cmd + [activity])
+            if getattr(opts, "dump", False):
+                cmd += ["--dump"]
+        for option, value in getattr(opts, "script", None) or []:
+            cmd += [option, value]
+        if getattr(opts, "layout", None):
+            cmd += ["--layout", opts.layout]
+        return subprocess.call(cmd if getattr(opts, "layout", None) else cmd + [activity])
 
 
 BACKENDS = [MacApk(), Emulator(), JavaRuntime()]

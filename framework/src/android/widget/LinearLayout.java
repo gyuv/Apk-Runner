@@ -4,6 +4,8 @@ import android.content.Context;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.util.AttributeSet;
+import com.apkrunner.res.Attrs;
 
 public class LinearLayout extends ViewGroup {
     public static final int HORIZONTAL = 0, VERTICAL = 1;
@@ -14,13 +16,36 @@ public class LinearLayout extends ViewGroup {
 
         public LayoutParams(int w, int h) { super(w, h); }
         public LayoutParams(int w, int h, float weight) { super(w, h); this.weight = weight; }
-        public LayoutParams(ViewGroup.LayoutParams src) { super(src); }
+        public LayoutParams(ViewGroup.LayoutParams src) {
+            super(src);
+            if (src instanceof LayoutParams) { weight = ((LayoutParams) src).weight; gravity = ((LayoutParams) src).gravity; }
+        }
+        public LayoutParams(Context c, AttributeSet set) {
+            super(c, set);
+            Attrs a = Attrs.of(set);
+            if (a == null) return;
+            weight = a.dimension("layout_weight", 0);
+            gravity = a.intValue("layout_gravity", -1);
+        }
     }
 
     private int orientation = HORIZONTAL;
     private int gravity = Gravity.NO_GRAVITY;
 
     public LinearLayout(Context c) { super(c); }
+    public LinearLayout(Context c, AttributeSet set) { this(c, set, 0); }
+
+    public LinearLayout(Context c, AttributeSet set, int s) {
+        super(c, set, s);
+        Attrs a = Attrs.of(set);
+        if (a != null) {
+            orientation = a.intValue("orientation", HORIZONTAL);
+            gravity = a.intValue("gravity", Gravity.NO_GRAVITY);
+        }
+    }
+
+    @Override
+    public ViewGroup.LayoutParams generateLayoutParams(AttributeSet attrs) { return new LayoutParams(getContext(), attrs); }
 
     public void setOrientation(int o) { orientation = o; requestLayout(); }
     public int getOrientation() { return orientation; }

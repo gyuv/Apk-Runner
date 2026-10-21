@@ -4,6 +4,8 @@ import android.content.Context;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.util.AttributeSet;
+import com.apkrunner.res.Attrs;
 
 public class FrameLayout extends ViewGroup {
     public static class LayoutParams extends MarginLayoutParams {
@@ -11,10 +13,23 @@ public class FrameLayout extends ViewGroup {
 
         public LayoutParams(int w, int h) { super(w, h); }
         public LayoutParams(int w, int h, int gravity) { super(w, h); this.gravity = gravity; }
-        public LayoutParams(ViewGroup.LayoutParams src) { super(src); }
+        public LayoutParams(ViewGroup.LayoutParams src) {
+            super(src);
+            if (src instanceof LayoutParams) gravity = ((LayoutParams) src).gravity;
+        }
+        public LayoutParams(Context c, AttributeSet set) {
+            super(c, set);
+            Attrs a = Attrs.of(set);
+            if (a != null) gravity = a.intValue("layout_gravity", Gravity.NO_GRAVITY);
+        }
     }
 
     public FrameLayout(Context c) { super(c); }
+    public FrameLayout(Context c, AttributeSet a) { super(c, a); }
+    public FrameLayout(Context c, AttributeSet a, int s) { super(c, a, s); }
+
+    @Override
+    public ViewGroup.LayoutParams generateLayoutParams(AttributeSet attrs) { return new LayoutParams(getContext(), attrs); }
 
     @Override
     protected ViewGroup.LayoutParams generateDefaultLayoutParams() { return new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT); }

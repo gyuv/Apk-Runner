@@ -74,6 +74,13 @@ def cmd_update(a):
     return update(force=a.force)
 
 
+def cmd_preview(a):
+    from types import SimpleNamespace
+    info = inspect(a.apk)
+    opts = SimpleNamespace(activity="-", screenshot=a.screenshot, script=None, layout=a.layout, dump=False)
+    return backends.JavaRuntime().run(a.apk, info, opts)
+
+
 def cmd_doctor(a):
     from .inspect import host_arch
     import platform
@@ -91,6 +98,15 @@ def cmd_run(a):
         return 1
     print(f"Running {info['package']} with backend '{b.name}' ({info['verdict']})")
     return b.run(a.apk, info, a)
+
+
+class _Step(argparse.Action):
+    """Keeps --tap and --type in command-line order."""
+
+    def __call__(self, parser, ns, value, option):
+        steps = getattr(ns, self.dest, None) or []
+        steps.append((option, value))
+        setattr(ns, self.dest, steps)
 
 
 def main(argv=None):
@@ -130,6 +146,12 @@ def main(argv=None):
     u.add_argument("--force", action="store_true", help="reinstall even if up to date")
     u.set_defaults(fn=cmd_update)
 
+    pv = sub.add_parser("preview", help="render one layout resource of an APK (java backend)")
+    pv.add_argument("apk")
+    pv.add_argument("layout", help="layout name, e.g. activity_main")
+    pv.add_argument("--screenshot", help="save to this PNG instead of opening a window")
+    pv.set_defaults(fn=cmd_preview)
+
     d = sub.add_parser("doctor", help="show which run backends are available")
     d.set_defaults(fn=cmd_doctor)
 
@@ -141,7 +163,9 @@ def main(argv=None):
     r.add_argument("--no-window", action="store_true", help="don't open the scrcpy window")
     r.add_argument("--activity", help="java backend: activity class to start")
     r.add_argument("--screenshot", help="java backend: render headless to this PNG and exit")
-    r.add_argument("--tap", action="append", metavar="X,Y", help="java backend: tap before the screenshot")
+    r.add_argument("--dump", action="store_true", help="java backend: with --screenshot, print the view tree")
+    r.add_argument("--tap", action=_Step, dest="script", metavar="X,Y", help="java backend: tap before the screenshot")
+    r.add_argument("--type", action=_Step, dest="script", metavar="TEXT", help="java backend: type into the focused field")
     r.set_defaults(fn=cmd_run)
 
     a = p.parse_args(argv)

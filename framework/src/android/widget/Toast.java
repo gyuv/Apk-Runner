@@ -12,6 +12,7 @@ public class Toast {
     private Toast(CharSequence text, int duration) { this.text = text; this.duration = duration; }
 
     public static Toast makeText(Context ctx, CharSequence text, int duration) { return new Toast(text, duration); }
+    public static Toast makeText(Context ctx, int resId, int duration) { return new Toast(ctx.getText(resId), duration); }
 
     public void show() { Host.toast(String.valueOf(text), duration == LENGTH_LONG ? 3500 : 2000); }
 }
