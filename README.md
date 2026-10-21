@@ -23,31 +23,26 @@ best way to run each app on your machine:
 
 ## 1. Install
 
-You need **Python 3.9 or newer** ([python.org](https://www.python.org/downloads/);
-macOS and Linux usually have it already).
+Download the file for your computer from the [Releases page](../../releases/latest).
+You don't need Python.
 
-**Option A: single-file release (easiest).** Download `apkrunner.pyz` from the
-[Releases page](../../releases/latest), then:
+| Computer | File | How to install |
+|---|---|---|
+| Windows 10/11 (64-bit) | `apkrunner-windows-x64.exe` | Put it in a folder (e.g. `C:\apkrunner`), and run it from Command Prompt or PowerShell |
+| Intel Mac | `apkrunner-macos-intel.dmg` | Open the dmg, copy `apkrunner` to `/usr/local/bin` |
+| Apple Silicon Mac (M1–M4) | `apkrunner-macos-apple-silicon.dmg` | Same as Intel |
+| Linux x64 | `apkrunner-linux-x64` | `chmod +x apkrunner-linux-x64` |
 
+It's a command-line tool: open a terminal in its folder and type commands like
+`apkrunner run app.apk` (Windows: `apkrunner-windows-x64.exe run app.apk`).
+
+**macOS "unidentified developer" warning:** the binary isn't notarized yet. Allow it once:
 ```bash
-python apkrunner.pyz --help          # Windows: py apkrunner.pyz --help
+xattr -d com.apple.quarantine /usr/local/bin/apkrunner
 ```
+**Windows SmartScreen:** click *More info* → *Run anyway*.
 
-**Option B: install as a command.**
-
-```bash
-pip install https://github.com/gyuv/Apk-Runner/archive/refs/heads/main.zip
-apkrunner --help
-```
-
-**Option C: from source.**
-
-```bash
-git clone https://github.com/gyuv/Apk-Runner && cd Apk-Runner
-python -m apkrunner --help
-```
-
-The examples below write `apkrunner`. With option A, replace it with `python apkrunner.pyz`.
+**From source (developers):** `git clone https://github.com/gyuv/Apk-Runner && cd Apk-Runner && python -m apkrunner --help`
 
 ## 2. Set up a backend to run apps
 
@@ -91,7 +86,12 @@ apkrunner inspect app.apk            # can it run natively on this machine?
 apkrunner inspect --json app.apk     # machine-readable output
 apkrunner extract app.apk -o out/    # unpack and decode AndroidManifest.xml to readable XML
 apkrunner merge app.xapk -o splits/  # pull the split APKs out of a bundle
+apkrunner apis app.apk               # which Android framework classes the app uses most
+apkrunner convert app.apk -o app.jar # app code (DEX) -> standard Java .jar (needs Java 8+)
 ```
+
+`convert` downloads [dex2jar](https://github.com/pxb1988/dex2jar) (Apache-2.0) once,
+into `~/.apkrunner/tools`.
 
 `run` options:
 
@@ -126,7 +126,10 @@ so the second launch takes a few seconds.
 ## Roadmap
 
 1. Inspector, unpacker, bundle merge, multi-backend runner. **(done, v0.2)**
-2. Java-only apps without a VM: dex → JVM bytecode on OpenJDK with an Android framework subset, windows through SDL3.
+2. Java-only apps without a VM:
+   - DEX reader and framework API usage report (`apis`). **(done, v0.3)**
+   - DEX → JVM `.jar` conversion (`convert`). **(done, v0.3)**
+   - Android framework subset on OpenJDK (Activity, View, Canvas), with windows through SDL3. *(next)*
 3. Native x86_64 `.so` loading without a VM (ELF loader + bionic shim), with GLES through ANGLE.
 4. ARM → x86 translation, so ARM-only apps run without a VM on Intel and Windows.
 
@@ -136,12 +139,12 @@ Steps 2–4 are a large research effort (Mac.apk itself is about 3,000 files). C
 
 ```bash
 python -m unittest discover -s tests -t .   # tests
-python scripts/build_release.py             # builds dist/apkrunner.pyz
+pip install pyinstaller && pyinstaller --onefile --name apkrunner --paths . scripts/apkrunner_entry.py
 ```
 
 To publish a release, push a tag (`git tag v0.2.0 && git push origin v0.2.0`) or run
-the **Release** workflow from the Actions tab. It attaches `apkrunner.pyz`, a wheel
-and the source archive.
+the **Release** workflow from the Actions tab. It builds the Windows `.exe`, the two
+macOS `.dmg` files and the Linux binary on GitHub's machines and attaches them.
 
 ## License
 

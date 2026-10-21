@@ -40,6 +40,35 @@ def cmd_merge(a):
     return 0
 
 
+def cmd_apis(a):
+    import io
+    import zipfile
+    from .bundle import split_apks
+    from .dex import api_usage
+    dex = []
+    for data in split_apks(a.apk).values():
+        z = zipfile.ZipFile(io.BytesIO(data))
+        dex += [z.read(n) for n in z.namelist() if n.endswith(".dex")]
+    n_classes, calls = api_usage(dex)
+    if a.json:
+        print(json.dumps({"classes": n_classes, "apis": dict(calls.most_common())}, indent=2))
+        return 0
+    print(f"{n_classes} app classes, {len(calls)} distinct framework methods used")
+    by_class = {}
+    for ref, c in calls.items():
+        k = ref.rsplit(".", 1)[0]
+        by_class[k] = by_class.get(k, 0) + c
+    for k, c in sorted(by_class.items(), key=lambda x: -x[1])[:a.top]:
+        print(f"  {c:6}  {k}")
+    return 0
+
+
+def cmd_convert(a):
+    from .convert import convert
+    print(convert(a.apk, a.out))
+    return 0
+
+
 def cmd_doctor(a):
     from .inspect import host_arch
     import platform
@@ -79,6 +108,17 @@ def main(argv=None):
     m.add_argument("apk")
     m.add_argument("-o", "--out", default="splits")
     m.set_defaults(fn=cmd_merge)
+
+    ap = sub.add_parser("apis", help="report which Android framework APIs an app calls")
+    ap.add_argument("apk")
+    ap.add_argument("--top", type=int, default=25)
+    ap.add_argument("--json", action="store_true")
+    ap.set_defaults(fn=cmd_apis)
+
+    c = sub.add_parser("convert", help="convert the app's DEX code to a JVM .jar (uses dex2jar)")
+    c.add_argument("apk")
+    c.add_argument("-o", "--out", default="app.jar")
+    c.set_defaults(fn=cmd_convert)
 
     d = sub.add_parser("doctor", help="show which run backends are available")
     d.set_defaults(fn=cmd_doctor)
