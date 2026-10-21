@@ -2,26 +2,18 @@ import argparse
 import json
 import sys
 
-from . import __version__
+from . import __version__, backends
+from .bundle import extract, merge
 from .inspect import inspect
 
 EXPLAIN = {
     "native": "Can run natively on this host (no VM, no translation).",
-    "needs-translation": "Ships only ARM native code; needs the ARM->x86 translation layer (roadmap phase 4).",
+    "needs-translation": "Ships only ARM native code; on x86 it needs ARM translation (emulator backend provides it).",
     "unsupported": "No native libraries for any ABI this host can execute.",
 }
 
 
-def main(argv=None):
-    p = argparse.ArgumentParser(prog="apkrunner")
-    p.add_argument("--version", action="version", version=__version__)
-    sub = p.add_subparsers(dest="cmd", required=True)
-    i = sub.add_parser("inspect", help="analyse an APK/XAPK/APKM for this host")
-    i.add_argument("apk", nargs="+")
-    i.add_argument("--arch", help="pretend host arch (arm64, x86_64, x86)")
-    i.add_argument("--json", action="store_true")
-    a = p.parse_args(argv)
-
+def cmd_inspect(a):
     for path in a.apk:
         info = inspect(path, a.arch)
         if a.json:
@@ -35,6 +27,72 @@ def main(argv=None):
               + (f" ({info['abi']})" if info['abi'] else ""))
         print(f"  {EXPLAIN[info['verdict']]}")
     return 0
+
+
+def cmd_extract(a):
+    print(extract(a.apk, a.out))
+    return 0
+
+
+def cmd_merge(a):
+    for f in merge(a.apk, a.out):
+        print(f)
+    return 0
+
+
+def cmd_doctor(a):
+    from .inspect import host_arch
+    import platform
+    print(f"host: {platform.system()} {host_arch()}")
+    for b in backends.BACKENDS:
+        print(f"  {b.name:9} {'available' if b.available() else 'not found'}  - {b.__doc__}")
+    return 0
+
+
+def cmd_run(a):
+    info = inspect(a.apk)
+    b = backends.pick(a.backend)
+    if not b:
+        print("No backend available. Run `apkrunner doctor` and see the README setup section.", file=sys.stderr)
+        return 1
+    print(f"Running {info['package']} with backend '{b.name}' ({info['verdict']})")
+    return b.run(a.apk, info, a)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="apkrunner", description="Run and inspect Android apps on desktop.")
+    p.add_argument("--version", action="version", version=__version__)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    i = sub.add_parser("inspect", help="analyse an APK/XAPK/APKM for this host")
+    i.add_argument("apk", nargs="+")
+    i.add_argument("--arch", help="pretend host arch (arm64, x86_64, x86)")
+    i.add_argument("--json", action="store_true")
+    i.set_defaults(fn=cmd_inspect)
+
+    e = sub.add_parser("extract", help="unpack an APK/bundle and decode AndroidManifest.xml")
+    e.add_argument("apk")
+    e.add_argument("-o", "--out", default="extracted")
+    e.set_defaults(fn=cmd_extract)
+
+    m = sub.add_parser("merge", help="write all split APKs of an XAPK/APKM to a folder")
+    m.add_argument("apk")
+    m.add_argument("-o", "--out", default="splits")
+    m.set_defaults(fn=cmd_merge)
+
+    d = sub.add_parser("doctor", help="show which run backends are available")
+    d.set_defaults(fn=cmd_doctor)
+
+    r = sub.add_parser("run", help="install and launch an app")
+    r.add_argument("apk")
+    r.add_argument("--backend", choices=[b.name for b in backends.BACKENDS])
+    r.add_argument("--avd", help="emulator AVD name (default: first found)")
+    r.add_argument("--full", action="store_true", help="disable lite emulator profile")
+    r.add_argument("--no-window", action="store_true", help="don't open the scrcpy window")
+    r.set_defaults(fn=cmd_run)
+
+    a = p.parse_args(argv)
+    return a.fn(a)
 
 
 if __name__ == "__main__":

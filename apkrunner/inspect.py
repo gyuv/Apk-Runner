@@ -4,6 +4,7 @@ import platform
 import zipfile
 
 from . import axml
+from .bundle import split_apks
 
 # Host CPU -> Android ABIs it executes natively (best first).
 NATIVE_ABIS = {
@@ -26,13 +27,8 @@ def host_arch():
 
 def _open_apks(path):
     """Yield (name, ZipFile) for the APK, or every APK inside a bundle."""
-    z = zipfile.ZipFile(path)
-    if "AndroidManifest.xml" in z.namelist():
-        yield path, z
-        return
-    for n in z.namelist():
-        if n.endswith(".apk"):
-            yield n, zipfile.ZipFile(io.BytesIO(z.read(n)))
+    for name, data in split_apks(path).items():
+        yield name, zipfile.ZipFile(io.BytesIO(data))
 
 
 def inspect(path, arch=None):
