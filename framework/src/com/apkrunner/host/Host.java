@@ -48,6 +48,8 @@ public final class Host {
     public static boolean isHeadless() { return headless; }
 
     public static void main(String[] args) throws Exception {
+        // UTF-8 console output on every OS (Windows defaults to a legacy code page)
+        System.setOut(new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.out), true, "UTF-8"));
         String activity = null, screenshot = null, layout = null;
         boolean dump = false;
         List<Object> script = new ArrayList<>(); // int[] taps and String typing, in order

@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,7 @@ def run_app(apk, *steps):
         png = os.path.join(t, "shot.png")
         out = subprocess.run([sys.executable, "-m", "apkrunner", "run", apk, "--backend", "java",
                               "--screenshot", png, "--dump", *steps],
-                             cwd=ROOT, check=True, timeout=300, capture_output=True, text=True).stdout
+                             cwd=ROOT, check=True, timeout=300, capture_output=True, encoding="utf-8").stdout
         with open(png, "rb") as f:
             assert f.read(8) == b"\x89PNG\r\n\x1a\n"
     return out
@@ -49,7 +50,10 @@ class SampleTest(unittest.TestCase):
         for text in ('"My notes"', '"XML layouts and resources, no VM"', '"Buy milk"', '"2 notes"', '"Add"'):
             self.assertIn(text, out)
         self.assertIn("RelativeLayout", out)
-        self.assertIn("ImageView [12,15 40x40]", out)  # 40dp logo from a 96px xhdpi PNG
+        # 40dp logo from a 96px xhdpi PNG, vertically centered in the wrap_content header
+        # (font metrics differ per OS, so derive the expected position from the header height)
+        header_h = int(re.search(r"RelativeLayout \[0,0 400x(\d+)\]", out).group(1))
+        self.assertIn("ImageView [12,%d 40x40]" % ((header_h - 40) // 2), out)
 
     @unittest.skipUnless(shutil.which("javac"), "needs a JDK")
     def test_notes_typing_checkbox_onclick(self):
