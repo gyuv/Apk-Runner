@@ -30,7 +30,8 @@ import javax.swing.SwingUtilities;
 /**
  * Hosts Android activities in a desktop window.
  *
- * Usage: Host [--package P] [--size WxH] [--screenshot out.png] [--tap X,Y]... ActivityClass
+ * Usage: Host [--apk app.apk] [--package P] [--size WxH] [--screenshot out.png] [--tap X,Y] [--type TEXT]...
+ *             (ActivityClass | --layout NAME)
  */
 public final class Host {
     private static String packageName = "app";
@@ -47,8 +48,9 @@ public final class Host {
     public static boolean isHeadless() { return headless; }
 
     public static void main(String[] args) throws Exception {
-        String activity = null, screenshot = null;
-        List<int[]> taps = new ArrayList<>();
+        String activity = null, screenshot = null, layout = null;
+        boolean dump = false;
+        List<Object> script = new ArrayList<>(); // int[] taps and String typing, in order
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--package": packageName = args[++i]; break;
@@ -59,9 +61,13 @@ public final class Host {
                     break;
                 }
                 case "--screenshot": screenshot = args[++i]; headless = true; break;
+                case "--apk": Apk.open(args[++i]); break;
+                case "--type": script.add(args[++i]); break;
+                case "--layout": layout = args[++i]; activity = LayoutPreview.class.getName(); break;
+                case "--dump": dump = true; break;
                 case "--tap": {
                     String[] xy = args[++i].split(",");
-                    taps.add(new int[] {Integer.parseInt(xy[0]), Integer.parseInt(xy[1])});
+                    script.add(new int[] {Integer.parseInt(xy[0]), Integer.parseInt(xy[1])});
                     break;
                 }
                 default: activity = args[i];
@@ -74,21 +80,31 @@ public final class Host {
         if (headless) System.setProperty("java.awt.headless", "true");
         final String cls = activity;
         final String shot = screenshot;
+        final String previewLayout = layout;
+        final boolean dumpText = dump;
         SwingUtilities.invokeAndWait(() -> {
             if (!headless) openWindow();
             Intent intent = new Intent(Intent.ACTION_MAIN);
             intent.setClassName(null, cls);
+            if (previewLayout != null) intent.putExtra("layout", previewLayout);
             launch(intent);
         });
         if (shot != null) {
-            for (int[] t : taps) {
+            for (Object step : script) {
                 SwingUtilities.invokeAndWait(() -> {
-                    dispatch(MotionEvent.ACTION_DOWN, t[0], t[1]);
-                    dispatch(MotionEvent.ACTION_UP, t[0], t[1]);
+                    if (step instanceof int[]) {
+                        int[] t = (int[]) step;
+                        dispatch(MotionEvent.ACTION_DOWN, t[0], t[1]);
+                        dispatch(MotionEvent.ACTION_UP, t[0], t[1]);
+                    } else {
+                        for (char c : ((String) step).toCharArray()) key(c, false, false);
+                    }
                 });
             }
             Thread.sleep(300);
             SwingUtilities.invokeAndWait(() -> {
+                layoutIfNeeded(width, height);
+                if (dumpText && root() != null) dumpTree(root(), 0);
                 try {
                     ImageIO.write(render(), "png", new File(shot));
                 } catch (Exception e) {
@@ -166,6 +182,7 @@ public final class Host {
             root.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
             root.layout(0, 0, w, h);
+            android.view.ViewTreeObserver.dispatchGlobalLayout();
         }
     }
 
@@ -206,6 +223,55 @@ public final class Host {
         if (!headless) UiThread.post(Host::frameDirty, ms + 50);
     }
 
+    /** Prints the view tree with texts, for tests and debugging. */
+    private static void dumpTree(View v, int depth) {
+        if (v.getVisibility() == View.GONE) return;
+        StringBuilder sb = new StringBuilder("VIEW ");
+        for (int i = 0; i < depth; i++) sb.append("  ");
+        sb.append(v.getClass().getSimpleName()).append(" [").append(v.getLeft()).append(',').append(v.getTop())
+                .append(' ').append(v.getWidth()).append('x').append(v.getHeight()).append(']');
+        if (v instanceof android.widget.TextView) sb.append(" \"").append(((android.widget.TextView) v).getText()).append('"');
+        if (v instanceof android.widget.CompoundButton) sb.append(((android.widget.CompoundButton) v).isChecked() ? " checked" : " unchecked");
+        System.out.println(sb);
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) dumpTree(g.getChildAt(i), depth + 1);
+        }
+    }
+
+    // ---- keyboard focus and scrolling ----------------------------------------------
+
+    private static View focused;
+
+    public static void focus(View v) { focused = v; frameDirty(); }
+    public static View focused() { return focused; }
+
+    private static void key(char c, boolean backspace, boolean enter) {
+        if (focused instanceof android.widget.EditText) ((android.widget.EditText) focused).onHostKey(c, backspace, enter);
+        frameDirty();
+    }
+
+    /** Deepest ScrollView under (x, y), for the mouse wheel. */
+    private static android.widget.ScrollView scrollTarget(View v, int x, int y) {
+        android.widget.ScrollView found = null;
+        if (v instanceof android.widget.ScrollView) {
+            found = (android.widget.ScrollView) v;
+            y += found.getScrollY();
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = g.getChildCount() - 1; i >= 0; i--) {
+                View c = g.getChildAt(i);
+                if (c.getVisibility() == View.VISIBLE && x >= c.getLeft() && x < c.getRight() && y >= c.getTop() && y < c.getBottom()) {
+                    android.widget.ScrollView inner = scrollTarget(c, x - c.getLeft(), y - c.getTop());
+                    if (inner != null) return inner;
+                    break;
+                }
+            }
+        }
+        return found;
+    }
+
     private static void dispatch(int action, int x, int y) {
         if (panel != null) layoutIfNeeded(panel.getWidth(), panel.getHeight());
         else layoutIfNeeded(width, height);
@@ -227,6 +293,12 @@ public final class Host {
         };
         panel.addMouseListener(mouse);
         panel.addMouseMotionListener(mouse);
+        panel.addMouseWheelListener(e -> {
+            View root = root();
+            android.widget.ScrollView sv = root == null ? null : scrollTarget(root, e.getX(), e.getY());
+            if (sv != null) { sv.scrollBy(0, (int) Math.round(e.getPreciseWheelRotation() * 40)); frameDirty(); }
+        });
+        new javax.swing.Timer(500, e -> { if (focused != null) frameDirty(); }).start(); // caret blink
         frame = new JFrame(packageName);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.getContentPane().add(panel, BorderLayout.CENTER);
@@ -234,6 +306,14 @@ public final class Host {
             @Override
             public void keyPressed(KeyEvent e) {
                 if (e.getKeyCode() == KeyEvent.VK_ESCAPE && !STACK.isEmpty()) STACK.peek().onBackPressed();
+                else if (e.getKeyCode() == KeyEvent.VK_BACK_SPACE) key('\0', true, false);
+                else if (e.getKeyCode() == KeyEvent.VK_ENTER) key('\0', false, true);
+            }
+
+            @Override
+            public void keyTyped(KeyEvent e) {
+                char c = e.getKeyChar();
+                if (c >= ' ' && c != 127) key(c, false, false);
             }
         });
         frame.pack();

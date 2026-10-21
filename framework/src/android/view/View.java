@@ -1,9 +1,13 @@
 package android.view;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
-import android.graphics.Paint;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.util.AttributeSet;
 import com.apkrunner.host.Host;
+import com.apkrunner.res.Attrs;
 
 public class View {
     public static final int VISIBLE = 0, INVISIBLE = 4, GONE = 8, NO_ID = -1;
@@ -25,7 +29,9 @@ public class View {
     private int id = NO_ID;
     private Object tag;
     private int visibility = VISIBLE;
-    private int backgroundColor;
+    private Drawable background;
+    private int minWidth, minHeight;
+    private float alpha = 1f;
     private boolean enabled = true;
     protected int paddingLeft, paddingTop, paddingRight, paddingBottom;
     private int left, top, right, bottom;
@@ -38,6 +44,43 @@ public class View {
     private boolean pressed;
 
     public View(Context context) { this.context = context; }
+
+    public View(Context context, AttributeSet set) { this(context, set, 0); }
+    public View(Context context, AttributeSet set, int defStyleAttr) { this(context, set, defStyleAttr, 0); }
+
+    public View(Context context, AttributeSet set, int defStyleAttr, int defStyleRes) {
+        this(context);
+        Attrs a = Attrs.of(set);
+        if (a == null) return;
+        if (a.resourceId("id") != 0) id = a.resourceId("id");
+        float p = a.dimension("padding", -1);
+        if (p >= 0) paddingLeft = paddingTop = paddingRight = paddingBottom = (int) p;
+        float ph = a.dimension("paddingHorizontal", -1), pv = a.dimension("paddingVertical", -1);
+        if (ph >= 0) paddingLeft = paddingRight = (int) ph;
+        if (pv >= 0) paddingTop = paddingBottom = (int) pv;
+        paddingLeft = (int) a.dimension("paddingLeft", a.dimension("paddingStart", paddingLeft));
+        paddingRight = (int) a.dimension("paddingRight", a.dimension("paddingEnd", paddingRight));
+        paddingTop = (int) a.dimension("paddingTop", paddingTop);
+        paddingBottom = (int) a.dimension("paddingBottom", paddingBottom);
+        Drawable bg = a.drawable("background");
+        if (bg != null) background = bg;
+        int vis = a.intValue("visibility", 0);
+        visibility = vis == 1 ? INVISIBLE : vis == 2 ? GONE : VISIBLE;
+        enabled = a.bool("enabled", true);
+        minWidth = (int) a.dimension("minWidth", 0);
+        minHeight = (int) a.dimension("minHeight", 0);
+        alpha = a.dimension("alpha", 1f);
+        final CharSequence onClick = a.text("onClick");
+        if (onClick != null) {
+            clickListener = v -> {
+                try {
+                    context.getClass().getMethod(onClick.toString(), View.class).invoke(context, v);
+                } catch (ReflectiveOperationException e) {
+                    throw new IllegalStateException("android:onClick method " + onClick + " not found", e);
+                }
+            };
+        }
+    }
 
     public Context getContext() { return context; }
     public int getId() { return id; }
@@ -54,8 +97,28 @@ public class View {
     public void setEnabled(boolean e) { enabled = e; invalidate(); }
     public boolean isPressed() { return pressed; }
 
-    public void setBackgroundColor(int color) { backgroundColor = color; invalidate(); }
-    public int getBackgroundColor() { return backgroundColor; }
+    public void setBackgroundColor(int color) { setBackground(new ColorDrawable(color)); }
+    public int getBackgroundColor() { return background instanceof ColorDrawable ? ((ColorDrawable) background).getColor() : 0; }
+    public void setBackground(Drawable d) { background = d; invalidate(); }
+    @Deprecated public void setBackgroundDrawable(Drawable d) { setBackground(d); }
+    public Drawable getBackground() { return background; }
+    public void setBackgroundResource(int id) { setBackground(id == 0 ? null : context.getResources().getDrawable(id)); }
+    public Resources getResources() { return context.getResources(); }
+    public void setMinimumWidth(int w) { minWidth = w; requestLayout(); }
+    public void setMinimumHeight(int h) { minHeight = h; requestLayout(); }
+    public int getMinimumWidth() { return minWidth; }
+    public int getMinimumHeight() { return minHeight; }
+    protected int getSuggestedMinimumWidth() {
+        return Math.max(minWidth, background == null ? 0 : background.getMinimumWidth());
+    }
+    protected int getSuggestedMinimumHeight() {
+        return Math.max(minHeight, background == null ? 0 : background.getMinimumHeight());
+    }
+    public void setAlpha(float a) { alpha = a; invalidate(); }
+    public float getAlpha() { return alpha; }
+    public static View inflate(Context ctx, int layout, ViewGroup root) {
+        return LayoutInflater.from(ctx).inflate(layout, root);
+    }
 
     public void setPadding(int l, int t, int r, int b) { paddingLeft = l; paddingTop = t; paddingRight = r; paddingBottom = b; requestLayout(); }
     public int getPaddingLeft() { return paddingLeft; }
@@ -81,8 +144,8 @@ public class View {
     public final void measure(int widthSpec, int heightSpec) { onMeasure(widthSpec, heightSpec); }
 
     protected void onMeasure(int widthSpec, int heightSpec) {
-        setMeasuredDimension(getDefaultSize(paddingLeft + paddingRight, widthSpec),
-                getDefaultSize(paddingTop + paddingBottom, heightSpec));
+        setMeasuredDimension(getDefaultSize(Math.max(getSuggestedMinimumWidth(), paddingLeft + paddingRight), widthSpec),
+                getDefaultSize(Math.max(getSuggestedMinimumHeight(), paddingTop + paddingBottom), heightSpec));
     }
 
     public static int getDefaultSize(int size, int spec) {
@@ -117,6 +180,10 @@ public class View {
     public final int getWidth() { return right - left; }
     public final int getHeight() { return bottom - top; }
 
+    private static final ViewTreeObserver OBSERVER = new ViewTreeObserver();
+
+    public ViewTreeObserver getViewTreeObserver() { return OBSERVER; }
+    public View getRootView() { View v = this; while (v.parent != null) v = v.parent; return v; }
     public void requestLayout() { Host.requestLayout(); }
     public void invalidate() { Host.invalidate(); }
     public void postInvalidate() { Host.invalidate(); }
@@ -126,10 +193,9 @@ public class View {
     // ---- drawing ------------------------------------------------------------
 
     public void draw(Canvas canvas) {
-        if (backgroundColor != 0) {
-            Paint p = new Paint();
-            p.setColor(backgroundColor);
-            canvas.drawRect(0, 0, getWidth(), getHeight(), p);
+        if (background != null) {
+            background.setBounds(0, 0, getWidth(), getHeight());
+            background.draw(canvas);
         }
         onDraw(canvas);
         dispatchDraw(canvas);

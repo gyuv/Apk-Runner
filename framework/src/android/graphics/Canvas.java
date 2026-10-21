@@ -18,6 +18,11 @@ public class Canvas {
 
     public Canvas(Graphics2D g, int width, int height) { this.g = g; this.width = width; this.height = height; }
 
+    public Canvas(Bitmap bitmap) {
+        this(bitmap.image().createGraphics(), bitmap.getWidth(), bitmap.getHeight());
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+    }
+
     public int getWidth() { return width; }
     public int getHeight() { return height; }
 
@@ -64,6 +69,23 @@ public class Canvas {
     }
     public void drawOval(RectF r, Paint p) { shape(new Ellipse2D.Float(r.left, r.top, r.width(), r.height()), p); }
     public void drawLine(float x1, float y1, float x2, float y2, Paint p) { apply(p); g.draw(new Line2D.Float(x1, y1, x2, y2)); }
+
+    public void drawBitmap(Bitmap b, float left, float top, Paint p) {
+        g.drawImage(b.image(), Math.round(left), Math.round(top), null);
+    }
+
+    public void drawBitmap(Bitmap b, Rect src, Rect dst, Paint p) {
+        drawBitmap(b, src, new RectF(dst.left, dst.top, dst.right, dst.bottom), p);
+    }
+
+    public void drawBitmap(Bitmap b, Rect src, RectF dst, Paint p) {
+        Rect s = src != null ? src : new Rect(0, 0, b.getWidth(), b.getHeight());
+        java.awt.Graphics2D gg = (java.awt.Graphics2D) g.create();
+        gg.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        gg.drawImage(b.image(), Math.round(dst.left), Math.round(dst.top), Math.round(dst.right), Math.round(dst.bottom),
+                s.left, s.top, s.right, s.bottom, null);
+        gg.dispose();
+    }
 
     public void drawText(String text, float x, float y, Paint p) {
         apply(p);

@@ -2,6 +2,8 @@ package android.view;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.util.AttributeSet;
+import com.apkrunner.res.Attrs;
 import java.util.ArrayList;
 
 public abstract class ViewGroup extends View implements ViewParent {
@@ -11,13 +13,38 @@ public abstract class ViewGroup extends View implements ViewParent {
 
         public LayoutParams(int w, int h) { width = w; height = h; }
         public LayoutParams(LayoutParams src) { this(src.width, src.height); }
+        public LayoutParams(Context c, AttributeSet set) {
+            Attrs a = Attrs.of(set);
+            width = a == null ? WRAP_CONTENT : (int) a.dimension("layout_width", WRAP_CONTENT);
+            height = a == null ? WRAP_CONTENT : (int) a.dimension("layout_height", WRAP_CONTENT);
+        }
     }
 
     public static class MarginLayoutParams extends LayoutParams {
         public int leftMargin, topMargin, rightMargin, bottomMargin;
 
         public MarginLayoutParams(int w, int h) { super(w, h); }
-        public MarginLayoutParams(LayoutParams src) { super(src); }
+        public MarginLayoutParams(LayoutParams src) {
+            super(src);
+            if (src instanceof MarginLayoutParams) {
+                MarginLayoutParams m = (MarginLayoutParams) src;
+                setMargins(m.leftMargin, m.topMargin, m.rightMargin, m.bottomMargin);
+            }
+        }
+        public MarginLayoutParams(Context c, AttributeSet set) {
+            super(c, set);
+            Attrs a = Attrs.of(set);
+            if (a == null) return;
+            int m = (int) a.dimension("layout_margin", 0);
+            leftMargin = topMargin = rightMargin = bottomMargin = m;
+            int mh = (int) a.dimension("layout_marginHorizontal", -1), mv = (int) a.dimension("layout_marginVertical", -1);
+            if (mh >= 0) leftMargin = rightMargin = mh;
+            if (mv >= 0) topMargin = bottomMargin = mv;
+            leftMargin = (int) a.dimension("layout_marginLeft", a.dimension("layout_marginStart", leftMargin));
+            rightMargin = (int) a.dimension("layout_marginRight", a.dimension("layout_marginEnd", rightMargin));
+            topMargin = (int) a.dimension("layout_marginTop", topMargin);
+            bottomMargin = (int) a.dimension("layout_marginBottom", bottomMargin);
+        }
         public void setMargins(int l, int t, int r, int b) { leftMargin = l; topMargin = t; rightMargin = r; bottomMargin = b; }
     }
 
@@ -25,6 +52,10 @@ public abstract class ViewGroup extends View implements ViewParent {
     private View touchTarget;
 
     public ViewGroup(Context c) { super(c); }
+    public ViewGroup(Context c, AttributeSet a) { super(c, a); }
+    public ViewGroup(Context c, AttributeSet a, int s) { super(c, a, s); }
+
+    public LayoutParams generateLayoutParams(AttributeSet attrs) { return new MarginLayoutParams(getContext(), attrs); }
 
     public void addView(View child) { addView(child, -1); }
     public void addView(View child, int index) {
