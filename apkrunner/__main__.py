@@ -129,6 +129,9 @@ def main(argv=None):
     r.add_argument("--avd", help="emulator AVD name (default: first found)")
     r.add_argument("--full", action="store_true", help="disable lite emulator profile")
     r.add_argument("--no-window", action="store_true", help="don't open the scrcpy window")
+    r.add_argument("--activity", help="java backend: activity class to start")
+    r.add_argument("--screenshot", help="java backend: render headless to this PNG and exit")
+    r.add_argument("--tap", action="append", metavar="X,Y", help="java backend: tap before the screenshot")
     r.set_defaults(fn=cmd_run)
 
     a = p.parse_args(argv)

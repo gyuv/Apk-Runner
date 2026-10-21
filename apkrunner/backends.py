@@ -98,11 +98,44 @@ class Emulator:
         return 0
 
 
-BACKENDS = [MacApk(), Emulator()]
+class JavaRuntime:
+    """Apk-Runner's own framework on Java: no VM, any OS (early, simple apps only)."""
+    name = "java"
+    auto = False  # only when asked for: most apps need framework parts not built yet
+
+    def available(self):
+        return shutil.which("java") is not None
+
+    def run(self, apk, info, opts):
+        from .convert import convert
+        from .framework import framework_jar
+
+        if info["abis"]:
+            print("warning: this app has native libraries, which the java backend can't load yet")
+        cache = os.path.join(os.path.expanduser("~"), ".apkrunner", "apps")
+        os.makedirs(cache, exist_ok=True)
+        app_jar = os.path.join(cache, "%s-%d.jar" % (info["package"], int(os.path.getmtime(apk))))
+        if not os.path.exists(app_jar):
+            convert(apk, app_jar)
+        activity = opts.activity or info.get("main_activity")
+        if not activity:
+            raise SystemExit("No launcher activity found; pass --activity.")
+        cmd = ["java", "-cp", os.pathsep.join([framework_jar(), app_jar]),
+               "com.apkrunner.host.Host", "--package", info["package"]]
+        if opts.screenshot:
+            cmd += ["--screenshot", opts.screenshot]
+        for t in opts.tap or []:
+            cmd += ["--tap", t]
+        return subprocess.call(cmd + [activity])
+
+
+BACKENDS = [MacApk(), Emulator(), JavaRuntime()]
 
 
 def pick(name=None):
     for b in BACKENDS:
+        if name is None and not getattr(b, "auto", True):
+            continue
         if (name is None or b.name == name) and b.available():
             return b
     return None

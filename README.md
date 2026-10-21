@@ -12,6 +12,7 @@ best way to run each app on your machine:
 | Intel Mac | Android emulator (hardware-accelerated) + scrcpy window | Yes, a lightweight one |
 | Windows 10/11 | Android emulator (WHPX acceleration) + scrcpy window | Yes, a lightweight one |
 | Linux | Android emulator (KVM) + scrcpy window | Yes, a lightweight one |
+| **Any OS + Java 11+** | **Apk-Runner's own Android framework on Java** (`--backend java`), *experimental* | **No** |
 
 > **Why a VM on Intel and Windows?** Most apps, games especially, include native ARM
 > code. Apple Silicon is ARM, so Mac.apk runs that code directly. Intel and AMD CPUs
@@ -113,6 +114,43 @@ so the second launch takes a few seconds.
 | `needs-translation` | ARM-only native code on an Intel/AMD machine |
 | `unsupported` | No native code for any CPU type your machine can run |
 
+## 3b. The VM-free Java backend (experimental)
+
+Apk-Runner includes its own implementation of Android's app framework, written in Java.
+An app's code is converted from DEX to Java bytecode and runs directly on your
+computer's Java runtime, in its own desktop window. There's no emulator, no VM and no
+Android system underneath, and it works the same on Windows, Intel Macs, Apple Silicon
+Macs and Linux.
+
+```bash
+apkrunner run samples/hello/hello.apk --backend java
+```
+
+![Sample app running on the Java backend](docs/java-backend.png)
+
+Requirements: **Java 11 or newer** ([Adoptium](https://adoptium.net/) is free).
+Press `Esc` for Android's Back button.
+
+**What works today:** `Activity` lifecycle, `setContentView` with views built in code,
+`View`, `ViewGroup`, `LinearLayout` (including weights), `FrameLayout`, `TextView`,
+`Button`, `Toast`, custom views with `onDraw` (`Canvas` and `Paint`: rects, circles,
+ovals, lines, text), touch and click events, `Handler`/`postDelayed`, `Bundle`,
+`Intent` (starting activities), `Log`, `Build`, `Color`, `DisplayMetrics`.
+
+**Not yet:** XML layouts and `resources.arsc` (so `R.layout`/`R.string` don't work
+yet), images, `EditText`/keyboard input, scrolling, `RecyclerView`, services, OpenGL,
+sound, and native `.so` libraries. Most store apps use some of these, so for now they
+fail with a clear message naming the missing Android class, for example:
+
+```
+This app needs the Android class android.content.ServiceConnection, which Apk-Runner does not implement yet.
+```
+
+To see what an app needs, run `apkrunner apis app.apk`.
+
+**Testing without a window:** `--screenshot out.png` renders the app to an image, and
+`--tap X,Y` (repeatable) taps the screen first. This is what CI uses.
+
 ## 4. Troubleshooting
 
 | Problem | Fix |
@@ -129,7 +167,9 @@ so the second launch takes a few seconds.
 2. Java-only apps without a VM:
    - DEX reader and framework API usage report (`apis`). **(done, v0.3)**
    - DEX → JVM `.jar` conversion (`convert`). **(done, v0.3)**
-   - Android framework subset on OpenJDK (Activity, View, Canvas), with windows through SDL3. *(next)*
+   - Android framework core on Java: Activity, View, layouts, Canvas, touch, Toast, desktop window. **(done, v0.4)**
+   - Resources: binary XML layouts, `resources.arsc`, `R.*` IDs, images. *(next)*
+   - `EditText` and keyboard input, scrolling, `RecyclerView`, `SharedPreferences`, SQLite.
 3. Native x86_64 `.so` loading without a VM (ELF loader + bionic shim), with GLES through ANGLE.
 4. ARM → x86 translation, so ARM-only apps run without a VM on Intel and Windows.
 
@@ -138,7 +178,8 @@ Steps 2–4 are a large research effort (Mac.apk itself is about 3,000 files). C
 ## Developing
 
 ```bash
-python -m unittest discover -s tests -t .   # tests
+python -m unittest discover -s tests -t .   # tests (the Java backend test needs a JDK)
+python scripts/build_sample.py              # rebuild samples/hello/hello.apk
 pip install pyinstaller && pyinstaller --onefile --name apkrunner --paths . scripts/apkrunner_entry.py
 ```
 
