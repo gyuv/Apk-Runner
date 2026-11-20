@@ -93,6 +93,28 @@ def cmd_run(a):
     return b.run(a.apk, info, a)
 
 
+def _macapp():
+    from . import macapp
+    return macapp
+
+
+def cmd_install(a):
+    return _macapp().install(a.apk, launch_after=a.launch, opts=a)
+
+
+def cmd_launch(a):
+    return _macapp().launch(a.app, a)
+
+
+def cmd_settings(a):
+    m = _macapp()
+    if a.key:
+        m.set_config(a.key, a.value)
+    for k, v in m.config().items():
+        print(f"{k:14} {v}")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="apkrunner", description="Run and inspect Android apps on desktop.")
     p.add_argument("--version", action="version", version=__version__)
@@ -143,6 +165,43 @@ def main(argv=None):
     r.add_argument("--screenshot", help="java backend: render headless to this PNG and exit")
     r.add_argument("--tap", action="append", metavar="X,Y", help="java backend: tap before the screenshot")
     r.set_defaults(fn=cmd_run)
+
+    def run_opts(sp):
+        sp.add_argument("--backend", choices=["macapk", "emulator"])
+        sp.add_argument("--avd", help="emulator AVD name (default: first found)")
+        sp.add_argument("--full", action="store_true", help="disable lite emulator profile")
+        sp.add_argument("--no-window", action="store_true", help="don't open the app window")
+
+    ins = sub.add_parser("install", help="install an app and give it its own Mac app (Launchpad, Spotlight, Dock)")
+    ins.add_argument("apk")
+    ins.add_argument("--launch", action="store_true", help="open it right after installing")
+    run_opts(ins)
+    ins.set_defaults(fn=cmd_install)
+
+    la = sub.add_parser("launch", help="open an installed app in its own window")
+    la.add_argument("app", help="package name or app name")
+    run_opts(la)
+    la.set_defaults(fn=cmd_launch)
+
+    ls = sub.add_parser("list", help="list installed apps")
+    ls.set_defaults(fn=lambda a: _macapp().list_apps())
+
+    rm = sub.add_parser("uninstall", help="remove an installed app and its Mac app")
+    rm.add_argument("app")
+    rm.set_defaults(fn=lambda a: _macapp().uninstall(a.app))
+
+    ro = sub.add_parser("rotate", help="remember landscape/portrait for one app")
+    ro.add_argument("app")
+    ro.add_argument("side", choices=["landscape", "portrait", "auto"])
+    ro.set_defaults(fn=lambda a: _macapp().rotate(a.app, a.side))
+
+    asc = sub.add_parser("associate", help="macOS: open .apk files from Finder with a double-click")
+    asc.set_defaults(fn=lambda a: _macapp().associate())
+
+    st = sub.add_parser("settings", help="show or change settings (idle_shutdown, shared_folder, orientation)")
+    st.add_argument("key", nargs="?")
+    st.add_argument("value", nargs="?")
+    st.set_defaults(fn=cmd_settings)
 
     a = p.parse_args(argv)
     from . import updater

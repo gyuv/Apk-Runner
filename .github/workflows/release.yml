@@ -22,9 +22,14 @@ jobs:
           - os: macos-latest
             asset: apkrunner-macos-apple-silicon.dmg
             raw: apkrunner-macos-apple-silicon
+          - os: macos-latest
+            asset: apkrunner-macos-universal.dmg
+            raw: apkrunner-macos-universal
+            pyi: --target-arch universal2
           - os: ubuntu-latest
             asset: apkrunner-linux-x64
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.pyi != '' && matrix.pyi != null }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,7 +42,7 @@ jobs:
       - run: python -m unittest discover -s tests -t .
       - run: pip install pyinstaller==6.11.1
       - run: python -c "from apkrunner.framework import build; build('apkrunner/framework.jar')"
-      - run: pyinstaller --onefile --name apkrunner --paths . --add-data "apkrunner/framework.jar${{ runner.os == 'Windows' && ';' || ':' }}apkrunner" scripts/apkrunner_entry.py
+      - run: pyinstaller --onefile ${{ matrix.pyi }} --name apkrunner --paths . --add-data "apkrunner/framework.jar${{ runner.os == 'Windows' && ';' || ':' }}apkrunner" scripts/apkrunner_entry.py
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: copy dist\apkrunner.exe ${{ matrix.asset }}
@@ -56,7 +61,9 @@ jobs:
         run: ./dist/apkrunner --version
       - name: Smoke test (macOS)
         if: runner.os == 'macOS'
-        run: dist/apkrunner --version
+        run: |
+          dist/apkrunner --version
+          lipo -info dist/apkrunner
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}

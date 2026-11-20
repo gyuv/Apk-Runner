@@ -32,6 +32,7 @@ You don't need Python.
 | Windows 10/11 (64-bit) | `apkrunner-windows-x64.exe` | Put it in a folder (e.g. `C:\apkrunner`), and run it from Command Prompt or PowerShell |
 | Intel Mac | `apkrunner-macos-intel.dmg` | Open the dmg, copy `apkrunner` to `/usr/local/bin` |
 | Apple Silicon Mac (M1–M4) | `apkrunner-macos-apple-silicon.dmg` | Same as Intel |
+| Any Mac (one file) | `apkrunner-macos-universal.dmg` | Universal binary, runs on Intel and Apple Silicon |
 | Linux x64 | `apkrunner-linux-x64` | `chmod +x apkrunner-linux-x64` |
 
 It's a command-line tool: open a terminal in its folder and type commands like
@@ -76,6 +77,36 @@ into `/Applications`. Then `apkrunner run app.apk` uses it automatically.
 4. (Recommended) Install **[scrcpy](https://github.com/Genymobile/scrcpy)** so each app
    opens in its own desktop window. Use `brew install scrcpy`, `winget install Genymobile.scrcpy`
    or `apt install scrcpy`.
+
+## Android apps as real Mac apps
+
+Inspired by [ApkStart](https://github.com/RoutineMiku/apkstart) (Windows): install an APK once,
+then use it like any other Mac app. There's no Electron and no background daemon, and the only
+system tools it uses ship with macOS (`sips`, `osacompile`, `lsregister`).
+
+```bash
+apkrunner install app.apk          # or .xapk / .apkm
+```
+
+- **Each app gets its own `.app`** in `~/Applications/Android Apps/`, with the app's real name
+  and icon read from the APK (`resources.arsc` + adaptive icons, parsed offline). It shows up in
+  Launchpad and Spotlight and can be pinned to the Dock.
+- **Opening the app** starts the best runtime: Mac.apk on Apple Silicon (no VM), otherwise the
+  emulator starts on demand and the app opens in its own scrcpy window named after the app.
+- **Orientation is automatic**: the manifest's `screenOrientation` decides landscape or portrait.
+  Override one app with `apkrunner rotate "App Name" landscape|portrait|auto`.
+- **Shared folder**: `~/ApkRunnerShared` ⇄ `/sdcard/ApkRunnerShared`, synced when an app opens
+  and when it closes.
+- **Idle shutdown**: the emulator stops when the last app window closes (if Apk-Runner started it).
+- **Double-click APKs in Finder**: `apkrunner associate` creates *APK Installer.app*. Make it
+  the default with right-click on an `.apk` → Get Info → Open with → Change All (or install `duti`).
+
+```bash
+apkrunner list
+apkrunner launch "App Name"        # or the package name
+apkrunner uninstall "App Name"
+apkrunner settings idle_shutdown off   # also: shared_folder on|off, orientation auto|landscape|portrait
+```
 
 ## 3. Use it
 
