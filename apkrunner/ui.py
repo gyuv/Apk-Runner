@@ -13,12 +13,17 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
+import urllib.request
 import webbrowser
 from urllib.parse import parse_qs, quote, urlparse
 
 from . import __version__, backends, macapp
 
 TOKEN = secrets.token_urlsafe(16)
+INSTANCE = os.path.join(macapp.STATE, "dashboard.json")
+IDLE_EXIT = 180  # seconds without any page request before an app-launched dashboard quits
+LAST_SEEN = [time.time()]
 RUNNING = {}  # package -> Popen
 LOCK = threading.Lock()
 MAX_UPLOAD = 4 << 30
@@ -68,6 +73,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _authed(self, query):
+        LAST_SEEN[0] = time.time()
         given = self.headers.get("X-Token") or query.get("t", [""])[0]
         return secrets.compare_digest(given, TOKEN)
 
@@ -103,6 +109,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             if url.path == "/api/install":
                 return self._install(q)
+            if url.path == "/api/quit":
+                self._send(200, {"ok": True})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return
             pkg = q.get("pkg", [""])[0]
             if pkg not in macapp.registry():
                 return self._send(404, {"error": "unknown app"})
@@ -150,11 +160,45 @@ class Handler(http.server.BaseHTTPRequestHandler):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def serve(port=0, open_browser=True):
+def _existing():
+    """URL of a dashboard that is already running, if any."""
+    try:
+        with open(INSTANCE) as f:
+            url = json.load(f)["url"]
+        base, _, token = url.partition("/?t=")
+        req = urllib.request.Request(base + "/api/apps", headers={"X-Token": token})
+        urllib.request.urlopen(req, timeout=2).read()
+        return url
+    except Exception:
+        return None
+
+
+def _idle_watch(srv):
+    while True:
+        time.sleep(15)
+        if time.time() - LAST_SEEN[0] > IDLE_EXIT and not any(
+                p.poll() is None for p in RUNNING.values()):
+            srv.shutdown()
+            return
+
+
+def serve(port=0, open_browser=True, idle_exit=None):
+    """Run the dashboard. A second launch just reopens the browser on the first one."""
+    url = _existing() if port == 0 else None
+    if url:
+        if open_browser:
+            webbrowser.open(url)
+        print("Apk-Runner dashboard is already running: %s" % url)
+        return 0
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
     url = "http://127.0.0.1:%d/?t=%s" % (srv.server_address[1], quote(TOKEN))
+    macapp._save(INSTANCE, {"url": url, "pid": os.getpid()})
     print("Apk-Runner dashboard: %s" % url)
     print("Keep this window open while you use it. Press Ctrl+C to quit.")
+    if idle_exit is None:  # launched from the .app: no Terminal to close, so quit when unused
+        idle_exit = not sys.stdin or not sys.stdin.isatty()
+    if idle_exit:
+        threading.Thread(target=_idle_watch, args=(srv,), daemon=True).start()
     if open_browser:
         threading.Timer(0.3, webbrowser.open, (url,)).start()
     try:
@@ -163,6 +207,10 @@ def serve(port=0, open_browser=True):
         pass
     finally:
         srv.server_close()
+        try:
+            os.remove(INSTANCE)
+        except OSError:
+            pass
     return 0
 
 
@@ -203,7 +251,7 @@ h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 #toast.show{opacity:1}
 select{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);padding:5px}
 </style></head><body>
-<header><h1>Apk-Runner</h1><span class="rt" id="rt"></span></header>
+<header><h1>Apk-Runner</h1><span class="rt" id="rt"></span><button class="btn ghost" id="quit" title="Stop Apk-Runner">Quit</button></header>
 <main>
   <div class="drop" id="drop">
     <div><b>Drop .apk, .xapk or .apkm files here</b></div>
@@ -259,5 +307,8 @@ $('#file').onchange=e=>{upload([...e.target.files]);e.target.value=''};
 ['dragenter','dragover'].forEach(n=>addEventListener(n,e=>{e.preventDefault();dz.classList.add('over')}));
 ['dragleave','drop'].forEach(n=>addEventListener(n,e=>{e.preventDefault();if(n=='drop'||e.target===dz)dz.classList.remove('over')}));
 addEventListener('drop',e=>{const fs=[...e.dataTransfer.files];if(fs.length)upload(fs)});
-load();setInterval(load,4000);
+$('#quit').onclick=async()=>{if(!confirm('Quit Apk-Runner? Open apps keep running.'))return;
+  try{await api('/api/quit',{method:'POST'})}catch(e){}
+  clearInterval(timer);document.body.innerHTML='<main><div class="empty">Apk-Runner has quit. Open it again from Launchpad.</div></main>'};
+load();const timer=setInterval(load,4000);
 </script></body></html>"""
