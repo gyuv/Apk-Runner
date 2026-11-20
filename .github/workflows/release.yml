@@ -46,10 +46,30 @@ jobs:
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: copy dist\apkrunner.exe ${{ matrix.asset }}
+      - name: Build Apk-Runner.app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          python scripts/make_icon.py icon.png
+          mkdir -p icon.iconset
+          for s in 16 32 128 256 512; do
+            sips -z $s $s icon.png --out icon.iconset/icon_${s}x${s}.png
+            sips -z $((s*2)) $((s*2)) icon.png --out icon.iconset/icon_${s}x${s}@2x.png
+          done
+          iconutil -c icns icon.iconset -o icon.icns
+          pyinstaller --windowed --noconfirm ${{ matrix.pyi }} --name Apk-Runner --icon icon.icns --osx-bundle-identifier io.github.apkrunner --paths . --add-data "apkrunner/framework.jar:apkrunner" --distpath appdist --workpath appbuild scripts/apkrunner_entry.py
+          PLIST=appdist/Apk-Runner.app/Contents/Info.plist
+          VER=$(python -c 'import apkrunner; print(apkrunner.__version__)')
+          /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" $PLIST
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" $PLIST
+          codesign --force --deep -s - appdist/Apk-Runner.app
+          appdist/Apk-Runner.app/Contents/MacOS/Apk-Runner --version
+          lipo -info appdist/Apk-Runner.app/Contents/MacOS/Apk-Runner
       - name: Package (macOS dmg)
         if: runner.os == 'macOS'
         run: |
           mkdir -p dmg && cp dist/apkrunner dmg/
+          cp -R appdist/Apk-Runner.app dmg/
+          ln -s /Applications dmg/Applications
           cp README.md dmg/README.md
           hdiutil create -volname "Apk-Runner" -srcfolder dmg -ov -format UDZO ${{ matrix.asset }}
           cp dist/apkrunner ${{ matrix.raw }}

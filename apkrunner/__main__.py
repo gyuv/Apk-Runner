@@ -115,7 +115,23 @@ def cmd_settings(a):
     return 0
 
 
+def _mac_paths():
+    """Apps opened from Finder/Launchpad don't get the shell's PATH: add the usual tool locations."""
+    import os
+    import platform
+    if platform.system() != "Darwin":
+        return
+    home = os.path.expanduser("~")
+    sdk = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or os.path.join(home, "Library/Android/sdk")
+    if os.path.isdir(sdk):
+        os.environ.setdefault("ANDROID_HOME", sdk)
+    extra = ["/opt/homebrew/bin", "/usr/local/bin", os.path.join(sdk, "platform-tools"), os.path.join(sdk, "emulator")]
+    path = os.environ.get("PATH", "/usr/bin:/bin:/usr/sbin:/sbin").split(os.pathsep)
+    os.environ["PATH"] = os.pathsep.join(path + [d for d in extra if d not in path and os.path.isdir(d)])
+
+
 def main(argv=None):
+    _mac_paths()
     p = argparse.ArgumentParser(prog="apkrunner", description="Run and inspect Android apps on desktop.")
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--no-update-check", action="store_true", help="don't check GitHub for a newer version")

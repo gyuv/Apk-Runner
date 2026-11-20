@@ -13,6 +13,7 @@ REPO = "gyuv/Apk-Runner"
 API = "https://api.github.com/repos/%s/releases/latest" % REPO
 STATE = os.path.join(os.path.expanduser("~"), ".apkrunner", "update-check.json")
 CHECK_EVERY = 24 * 3600
+IN_APP_BUNDLE = getattr(sys, "frozen", False) and ".app/Contents/MacOS/" in os.path.realpath(sys.executable)
 
 
 def _ver(tag):
@@ -77,6 +78,10 @@ def update(force=False):
     if not getattr(sys, "frozen", False):
         print("Apk-Runner %s is available. This copy runs from Python source, so update it with:\n"
               "  git pull   (or download a build from https://github.com/%s/releases/latest)" % (tag, REPO))
+        return 0
+    if IN_APP_BUNDLE:
+        print("Apk-Runner %s is available. Download the macOS .dmg from\n  %s\n"
+              "and drag Apk-Runner.app to Applications to replace this one." % (tag, rel.get("html_url")))
         return 0
     name = asset_name()
     url = next((a["browser_download_url"] for a in rel.get("assets", []) if a["name"] == name), None)

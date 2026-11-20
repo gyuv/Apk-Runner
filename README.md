@@ -30,7 +30,7 @@ You don't need Python.
 | Computer | File | How to install |
 |---|---|---|
 | Windows 10/11 (64-bit) | `apkrunner-windows-x64.exe` | Put it in a folder (e.g. `C:\apkrunner`), and run it from Command Prompt or PowerShell |
-| Intel Mac | `apkrunner-macos-intel.dmg` | Open the dmg, copy `apkrunner` to `/usr/local/bin` |
+| Intel Mac | `apkrunner-macos-intel.dmg` | Open the dmg and drag **Apk-Runner.app** to Applications (the dmg also has the `apkrunner` command-line tool) |
 | Apple Silicon Mac (M1–M4) | `apkrunner-macos-apple-silicon.dmg` | Same as Intel |
 | Any Mac (one file) | `apkrunner-macos-universal.dmg` | Universal binary, runs on Intel and Apple Silicon |
 | Linux x64 | `apkrunner-linux-x64` | `chmod +x apkrunner-linux-x64` |
@@ -80,10 +80,14 @@ into `/Applications`. Then `apkrunner run app.apk` uses it automatically.
 
 ## Dashboard
 
-Run `apkrunner` with no command (or double-click it) to open the dashboard in your browser:
+Open **Apk-Runner** from Launchpad (or run `apkrunner` with no command) to open the dashboard in your browser:
 drop `.apk` / `.xapk` / `.apkm` files on it to install them, then open, rotate or remove each app
 from its tile. It runs locally on 127.0.0.1, uses only Python's standard library, and stops when
-you close its Terminal window (or press Ctrl+C).
+you press **Quit** on the page. Opened from Launchpad it also quits by itself a few minutes after
+you close the dashboard tab; opening it again while it runs just brings the dashboard back.
+
+First launch of the downloaded app: macOS blocks unsigned apps. Right-click Apk-Runner.app → Open → Open,
+or run `xattr -dr com.apple.quarantine /Applications/Apk-Runner.app`.
 
 ![Dashboard](docs/dashboard.png)
 
