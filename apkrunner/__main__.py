@@ -119,7 +119,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="apkrunner", description="Run and inspect Android apps on desktop.")
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--no-update-check", action="store_true", help="don't check GitHub for a newer version")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")
 
     i = sub.add_parser("inspect", help="analyse an APK/XAPK/APKM for this host")
     i.add_argument("apk", nargs="+")
@@ -203,7 +203,14 @@ def main(argv=None):
     st.add_argument("value", nargs="?")
     st.set_defaults(fn=cmd_settings)
 
+    ui = sub.add_parser("ui", help="open the app dashboard (default when run with no command)")
+    ui.add_argument("--port", type=int, default=0)
+    ui.add_argument("--no-browser", action="store_true")
+    ui.set_defaults(fn=lambda a: __import__("apkrunner.ui", fromlist=["serve"]).serve(a.port, not a.no_browser))
+
     a = p.parse_args(argv)
+    if a.cmd is None:
+        a = p.parse_args(["--no-update-check", "ui"] if a.no_update_check else ["ui"])
     from . import updater
     updater.cleanup_old()
     if not a.no_update_check and a.cmd != "update":

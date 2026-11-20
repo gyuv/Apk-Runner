@@ -22,6 +22,7 @@ from .bundle import merge
 HOME = os.path.expanduser("~")
 STATE = os.path.join(HOME, ".apkrunner")
 APKS = os.path.join(STATE, "apks")
+ICONS = os.path.join(STATE, "icons")
 SESSIONS = os.path.join(STATE, "sessions")
 REGISTRY = os.path.join(STATE, "apps.json")
 CONFIG = os.path.join(STATE, "config.json")
@@ -160,6 +161,10 @@ def install(apk, launch_after=False, opts=None):
         app_path = build_bundle(os.path.join(APPS_DIR, _safe_name(m["label"]) + ".app"), m["label"],
                                 "io.github.apkrunner.app." + re.sub(r"[^A-Za-z0-9.]", "-", pkg),
                                 self_command() + ["--no-update-check", "launch", pkg], m["icon_png"])
+    if m["icon_png"]:
+        os.makedirs(ICONS, exist_ok=True)
+        with open(os.path.join(ICONS, pkg + ".img"), "wb") as f:
+            f.write(m["icon_png"])
     reg[pkg] = {"label": m["label"], "apk": stored, "orientation": m["orientation"],
                 "override": old.get("override"), "app": app_path, "installed_on_device": False}
     _save(REGISTRY, reg)
@@ -177,10 +182,11 @@ def uninstall(pkg):
     entry = reg.pop(pkg)
     if entry.get("app"):
         shutil.rmtree(entry["app"], ignore_errors=True)
-    try:
-        os.remove(entry["apk"])
-    except OSError:
-        pass
+    for f in (entry["apk"], os.path.join(ICONS, pkg + ".img")):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
     emu = backends.Emulator()
     if emu.available() and emu._device_ready():
         subprocess.call([emu.adb(), "uninstall", pkg], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

@@ -78,6 +78,15 @@ into `/Applications`. Then `apkrunner run app.apk` uses it automatically.
    opens in its own desktop window. Use `brew install scrcpy`, `winget install Genymobile.scrcpy`
    or `apt install scrcpy`.
 
+## Dashboard
+
+Run `apkrunner` with no command (or double-click it) to open the dashboard in your browser:
+drop `.apk` / `.xapk` / `.apkm` files on it to install them, then open, rotate or remove each app
+from its tile. It runs locally on 127.0.0.1, uses only Python's standard library, and stops when
+you close its Terminal window (or press Ctrl+C).
+
+![Dashboard](docs/dashboard.png)
+
 ## Android apps as real Mac apps
 
 Inspired by [ApkStart](https://github.com/RoutineMiku/apkstart) (Windows): install an APK once,
