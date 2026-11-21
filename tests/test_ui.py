@@ -34,3 +34,31 @@ class UiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoSetupTest(unittest.TestCase):
+    def test_open_waits_for_setup_then_launches(self):
+        from unittest import mock
+        state = {"ready": False}
+        launched, started = [], []
+        with mock.patch.object(ui, "_needs_setup", side_effect=lambda: not state["ready"]), \
+                mock.patch.object(ui.setup_android, "start_in_background",
+                                  side_effect=lambda: started.append(1) or ui.setup_android.PROGRESS.update(state="running")), \
+                mock.patch.object(ui.subprocess, "Popen", side_effect=lambda *a, **k: launched.append(a[0][-1])), \
+                mock.patch.object(ui.time, "sleep", side_effect=lambda s: None):
+            ui.setup_android.PROGRESS.clear()
+            ui.setup_android.PROGRESS["state"] = "idle"
+            ui._launch("com.x")                    # user presses Open before Android is ready
+            self.assertEqual(launched, [])
+            self.assertIn("com.x", ui.WAITING)
+            loop = threading.Thread(target=ui._auto_setup_loop, daemon=True)
+            loop.start()
+            deadline = __import__("time").time() + 5
+            while not started and __import__("time").time() < deadline:
+                pass
+            self.assertEqual(len(started), 1)      # setup started without being asked
+            state["ready"] = True                  # setup finished
+            while not launched and __import__("time").time() < deadline:
+                pass
+            self.assertEqual(launched, ["com.x"])  # the queued app opened by itself
+            self.assertNotIn("com.x", ui.WAITING)

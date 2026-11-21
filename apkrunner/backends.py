@@ -68,12 +68,15 @@ class Emulator:
             return
         emu = self.emulator()
         if not emu:
-            raise SystemExit("Android isn't set up yet. Open the dashboard and click 'Set up Android', "
-                             "or run: apkrunner setup")
+            raise SystemExit("Android isn't set up yet. Open Apk-Runner and it sets Android up automatically.")
         if not avd:
             avds = subprocess.run([emu, "-list-avds"], capture_output=True, text=True).stdout.split()
             if not avds:
-                raise SystemExit("No Android virtual device yet. Run: apkrunner setup")
+                from . import setup_android as sa
+                if not sa.installed():
+                    raise SystemExit("Android isn't fully set up yet. Open Apk-Runner and it finishes automatically.")
+                sa.write_avd(sa.sdk_root(), sa.host()[2])
+                avds = ["apkrunner"]
             avd = "apkrunner" if "apkrunner" in avds else avds[0]
         args = [emu, "-avd", avd, "-no-snapshot-save", "-no-boot-anim"]
         if lite:

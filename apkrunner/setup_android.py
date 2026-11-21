@@ -192,6 +192,24 @@ def installed(sdk=None):
     ))
 
 
+class _ProcessLock:
+    """Only one Apk-Runner process downloads at a time; others wait, then reuse the result."""
+
+    def __enter__(self):
+        path = os.path.join(os.path.expanduser("~"), ".apkrunner", "setup.lock")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        self.f = open(path, "w")
+        try:
+            import fcntl
+            fcntl.flock(self.f, fcntl.LOCK_EX)
+        except ImportError:  # Windows: no cross-process lock, the per-process one still applies
+            pass
+        return self
+
+    def __exit__(self, *exc):
+        self.f.close()
+
+
 def setup(log=print):
     """Download and install everything that's missing. Safe to run again."""
     with _LOCK:
@@ -200,6 +218,17 @@ def setup(log=print):
         PROGRESS.clear()
         PROGRESS.update(state="running", step="Checking Google's package list", done=0, total=0)
     try:
+        PROGRESS.update(step="Waiting for another Apk-Runner window to finish setting up Android")
+        with _ProcessLock():
+            PROGRESS.update(step="Checking Google's package list")
+            _setup(log)
+    except Exception as e:
+        PROGRESS.update(state="error", error=str(e))
+        raise
+
+
+def _setup(log):
+    if True:
         sdk = sdk_root()
         os.makedirs(sdk, exist_ok=True)
         parts, abi = plan()
@@ -222,9 +251,6 @@ def setup(log=print):
         os.environ.setdefault("ANDROID_HOME", sdk)
         PROGRESS.update(state="done", step="Android is ready")
         log("Android is ready (%s)" % sdk)
-    except Exception as e:
-        PROGRESS.update(state="error", error=str(e))
-        raise
 
 
 def start_in_background():
