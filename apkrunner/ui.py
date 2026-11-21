@@ -317,7 +317,7 @@ async function load(){
   }else if(st.state==='done'){
     box.innerHTML=`<h3>Android is ready</h3><p>Press Open on any app. The first start takes a few minutes while Android boots.</p>`;box.className='setup show';
   }else if(rt.needs_setup){
-    box.innerHTML=`<h3>One step before your apps can open</h3><p>Apk-Runner needs Android's runtime on this Mac. It downloads Google's official emulator and an Android 11 system (about 1.5 GB) — no Android Studio, Homebrew or Terminal needed.</p><button class="btn" data-setup>Set up Android</button>`;box.className='setup show';
+    box.innerHTML=`<h3>One step before your apps can open</h3><p>Apk-Runner needs Android's runtime on this Mac. It downloads Google's official emulator and an Android 11 system (about 1.9 GB, once) — no Android Studio, Homebrew or Terminal needed.</p><button class="btn" data-setup>Set up Android</button>`;box.className='setup show';
   }else box.className='setup';
   const g=$('#apps');
   if(!d.apps.length){g.className='';g.innerHTML='<div class="empty">No apps yet. Drop an APK above to get started.</div>';return}
