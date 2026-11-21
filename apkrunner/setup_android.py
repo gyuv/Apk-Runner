@@ -130,6 +130,7 @@ def _download(url, size, sha1, dest, label):
 def extract(zpath, dest):
     """Unzip keeping executable bits and symlinks (zipfile drops both by default)."""
     root = os.path.realpath(dest)
+    pending = []
     with zipfile.ZipFile(zpath) as z:
         for info in z.infolist():
             target = os.path.realpath(os.path.join(dest, info.filename))
@@ -143,12 +144,19 @@ def extract(zpath, dest):
             if stat.S_ISLNK(mode):
                 if os.path.lexists(target):
                     os.remove(target)
-                os.symlink(z.read(info).decode(), target)
+                link = z.read(info).decode()
+                try:
+                    os.symlink(link, target)
+                except OSError:  # e.g. Windows without symlink rights: copy the file instead
+                    pending.append((target, os.path.join(os.path.dirname(target), link)))
                 continue
             with z.open(info) as src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
             if mode & 0o111:
                 os.chmod(target, (mode & 0o777) | 0o600)
+    for target, src in pending:
+        if os.path.isfile(src):
+            shutil.copy2(src, target)
 
 
 def write_avd(sdk, abi, api=API, name=AVD):
@@ -175,8 +183,8 @@ def write_avd(sdk, abi, api=API, name=AVD):
 
 def installed(sdk=None):
     sdk = sdk or sdk_root()
-    _, _, abi = host()
-    exe = ".exe" if platform.system() == "Windows" else ""
+    host_os, _, abi = host()
+    exe = ".exe" if host_os == "windows" else ""
     return all(os.path.exists(p) for p in (
         os.path.join(sdk, "platform-tools", "adb" + exe),
         os.path.join(sdk, "emulator", "emulator" + exe),
