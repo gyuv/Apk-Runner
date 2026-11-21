@@ -18,7 +18,7 @@ import urllib.request
 import webbrowser
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import __version__, backends, macapp
+from . import __version__, backends, macapp, setup_android
 
 TOKEN = secrets.token_urlsafe(16)
 INSTANCE = os.path.join(macapp.STATE, "dashboard.json")
@@ -34,16 +34,36 @@ def _apps():
     out = []
     for pkg, e in sorted(macapp.registry().items(), key=lambda x: x[1]["label"].lower()):
         p = RUNNING.get(pkg)
+        error = None
+        if p and p.poll() not in (None, 0):
+            error = _last_line(_log_path(pkg)) or "the app couldn't be opened"
         out.append({"package": pkg, "label": e["label"],
                     "orientation": e.get("override") or e.get("orientation") or "auto",
                     "icon": os.path.exists(os.path.join(macapp.ICONS, pkg + ".img")),
-                    "running": bool(p and p.poll() is None)})
+                    "running": bool(p and p.poll() is None), "error": error})
     return out
+
+
+def _log_path(pkg):
+    return os.path.join(macapp.STATE, "logs", pkg + ".log")
+
+
+def _last_line(path):
+    try:
+        with open(path, errors="replace") as f:
+            lines = [l.strip() for l in f.read().splitlines() if l.strip()]
+    except OSError:
+        return None
+    # skip traceback noise: show the readable message
+    lines = [l for l in lines if not l.startswith(("Traceback", "File ", "^"))]
+    return lines[-1] if lines else None
 
 
 def _runtime():
     b = backends.pick()
-    return {"backend": b.name if b else None, "version": __version__}
+    prog = dict(setup_android.PROGRESS)
+    return {"backend": b.name if b else None, "version": __version__,
+            "needs_setup": b is None, "setup": prog}
 
 
 def _launch(pkg):
@@ -51,8 +71,11 @@ def _launch(pkg):
         p = RUNNING.get(pkg)
         if p and p.poll() is None:
             return
-        RUNNING[pkg] = subprocess.Popen(macapp.self_command() + ["--no-update-check", "launch", pkg],
-                                        stdin=subprocess.DEVNULL, start_new_session=True)
+        os.makedirs(os.path.dirname(_log_path(pkg)), exist_ok=True)
+        with open(_log_path(pkg), "w") as log:
+            RUNNING[pkg] = subprocess.Popen(macapp.self_command() + ["--no-update-check", "launch", pkg],
+                                            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                            start_new_session=True)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -109,6 +132,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             if url.path == "/api/install":
                 return self._install(q)
+            if url.path == "/api/setup":
+                setup_android.start_in_background()
+                return self._send(200, {"ok": True})
             if url.path == "/api/quit":
                 self._send(200, {"ok": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -246,6 +272,13 @@ h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 .tile .pkg{font-size:12px;color:var(--mute);word-break:break-all}
 .tile .row{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;justify-content:center}
 .badge{position:absolute;top:10px;right:10px;font-size:11px;color:var(--ok);font-weight:600}
+.setup{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px;display:none}
+.setup.show{display:block}
+.setup h3{margin:0 0 4px;font-size:16px}
+.setup p{margin:0 0 12px;color:var(--mute)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:10px 0 6px}
+.bar i{display:block;height:100%;background:var(--acc);width:0;transition:width .4s}
+.err{color:var(--bad);font-size:12px;word-break:break-word}
 .empty{color:var(--mute);padding:30px;text-align:center;border:1px solid var(--line);border-radius:14px;background:var(--card)}
 #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:.2s;pointer-events:none;max-width:90vw}
 #toast.show{opacity:1}
@@ -253,6 +286,7 @@ select{font:inherit;font-size:13px;border:1px solid var(--line);border-radius:8p
 </style></head><body>
 <header><h1>Apk-Runner</h1><span class="rt" id="rt"></span><button class="btn ghost" id="quit" title="Stop Apk-Runner">Quit</button></header>
 <main>
+  <div class="setup" id="setup"></div>
   <div class="drop" id="drop">
     <div><b>Drop .apk, .xapk or .apkm files here</b></div>
     <div>They're installed to your dashboard and open in their own window.</div>
@@ -271,7 +305,20 @@ let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('sh
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 async function load(){
   const d=await api('/api/apps');
-  $('#rt').innerHTML=d.runtime.backend?`<span class="dot"></span>Runtime: ${esc(d.runtime.backend)} · v${esc(d.runtime.version)}`:`<span class="dot off"></span>No Android runtime found (run <code>apkrunner doctor</code>)`;
+  const rt=d.runtime,st=rt.setup||{};
+  $('#rt').innerHTML=rt.backend?`<span class="dot"></span>Runtime: ${esc(rt.backend)} · v${esc(rt.version)}`:`<span class="dot off"></span>Android not set up · v${esc(rt.version)}`;
+  const box=$('#setup');
+  if(st.state==='running'){
+    const pct=st.total?Math.round(100*st.done/st.total):0;
+    box.innerHTML=`<h3>Setting up Android…</h3><p>${esc(st.step||'')}${st.total?` — ${(st.done/1048576).toFixed(0)} of ${(st.total/1048576).toFixed(0)} MB`:''}</p><div class="bar"><i style="width:${pct}%"></i></div><p>You can keep using this page. This happens only once.</p>`;
+    box.className='setup show';
+  }else if(st.state==='error'){
+    box.innerHTML=`<h3>Android setup didn't finish</h3><p class="err">${esc(st.error||'')}</p><button class="btn" data-setup>Try again</button>`;box.className='setup show';
+  }else if(st.state==='done'){
+    box.innerHTML=`<h3>Android is ready</h3><p>Press Open on any app. The first start takes a few minutes while Android boots.</p>`;box.className='setup show';
+  }else if(rt.needs_setup){
+    box.innerHTML=`<h3>One step before your apps can open</h3><p>Apk-Runner needs Android's runtime on this Mac. It downloads Google's official emulator and an Android 11 system (about 1.9 GB, once) — no Android Studio, Homebrew or Terminal needed.</p><button class="btn" data-setup>Set up Android</button>`;box.className='setup show';
+  }else box.className='setup';
   const g=$('#apps');
   if(!d.apps.length){g.className='';g.innerHTML='<div class="empty">No apps yet. Drop an APK above to get started.</div>';return}
   g.className='grid';
@@ -279,14 +326,16 @@ async function load(){
     ${a.running?'<span class="badge">● running</span>':''}
     ${a.icon?`<img src="/api/icon?pkg=${p}&t=${encodeURIComponent(T)}" alt="" data-open="${esc(a.package)}">`:`<div class="ph" data-open="${esc(a.package)}">${esc(a.label[0]||'?')}</div>`}
     <div class="name">${esc(a.label)}</div><div class="pkg">${esc(a.package)}</div>
+    ${a.error?`<div class="err">${esc(a.error)}</div>`:''}
     <div class="row"><button class="btn" data-open="${esc(a.package)}" ${a.running?'disabled':''}>${a.running?'Running':'Open'}</button>
     <select data-rot="${esc(a.package)}" title="Orientation">${['auto','portrait','landscape'].map(o=>`<option ${o==a.orientation?'selected':''}>${o}</option>`).join('')}</select>
     <button class="btn ghost" data-rm="${esc(a.package)}" title="Remove">Remove</button></div></div>`}).join('');
 }
 document.addEventListener('click',async e=>{
-  const o=e.target.closest('[data-open]'),r=e.target.closest('[data-rm]');
+  const o=e.target.closest('[data-open]'),r=e.target.closest('[data-rm]'),su=e.target.closest('[data-setup]');
   try{
-    if(o&&!o.disabled){await api('/api/open?pkg='+encodeURIComponent(o.dataset.open),{method:'POST'});toast('Opening… the app appears in its own window');setTimeout(load,800)}
+    if(su){await api('/api/setup',{method:'POST'});toast('Downloading Android…');setTimeout(load,500);return}
+    if(o&&!o.disabled){await api('/api/open?pkg='+encodeURIComponent(o.dataset.open),{method:'POST'});toast('Opening… the first start can take a few minutes');setTimeout(load,800)}
     if(r&&confirm('Remove this app?')){await api('/api/remove?pkg='+encodeURIComponent(r.dataset.rm),{method:'POST'});toast('Removed');load()}
   }catch(err){toast(err.message)}
 });

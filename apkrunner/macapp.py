@@ -280,8 +280,9 @@ def launch(name, opts=None):
 
     emu = backends.Emulator()
     if not emu.available():
-        _notify("Apk-Runner", "No Android runtime found. Run `apkrunner doctor`.")
-        return 1
+        msg = "Android isn't set up yet. Click 'Set up Android' in the dashboard, or run: apkrunner setup"
+        _notify("Apk-Runner", msg)
+        raise SystemExit(msg)
     session = _session_begin()
     booted_here = not emu._device_ready()
     try:
@@ -307,8 +308,7 @@ def launch(name, opts=None):
             _shell(emu, "monkey -p %s -c android.intent.category.LAUNCHER 1" % pkg)
         scrcpy = shutil.which("scrcpy")
         if not scrcpy or getattr(opts, "no_window", False):
-            if not scrcpy:
-                print("scrcpy not found: install it (brew install scrcpy) to get an app window")
+            booted_here = False  # the app is showing in the emulator's own window: leave it running
             return 0
         # The window lives as long as the app; closing it ends the session.
         subprocess.call([scrcpy, "--window-title", entry["label"], "--stay-awake"])

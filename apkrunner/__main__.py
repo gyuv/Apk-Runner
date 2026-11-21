@@ -106,6 +106,22 @@ def cmd_launch(a):
     return _macapp().launch(a.app, a)
 
 
+def cmd_setup(a):
+    from . import setup_android as sa
+    if a.dry_run:
+        host = tuple(a.host.split("-")) + (("arm64-v8a" if a.host.endswith("aarch64") else "x86_64"),) if a.host else None
+        parts, abi = sa.plan(host)
+        for name, p, _ in parts:
+            print(f"{name:52} {p['size'] >> 20:5} MB  {p['url']}")
+        return 0
+    if sa.installed() and not a.force:
+        print("Android is already set up in", sa.sdk_root())
+        sa.write_avd(sa.sdk_root(), sa.host()[2])
+        return 0
+    sa.setup()
+    return 0
+
+
 def cmd_ui(a):
     from . import ui
     return ui.serve(a.port, not a.no_browser)
@@ -223,6 +239,12 @@ def main(argv=None):
     st.add_argument("key", nargs="?")
     st.add_argument("value", nargs="?")
     st.set_defaults(fn=cmd_settings)
+
+    su = sub.add_parser("setup", help="download and set up the Android runtime (no Android Studio needed)")
+    su.add_argument("--dry-run", action="store_true", help="only show what would be downloaded")
+    su.add_argument("--host", help="with --dry-run: pretend host, e.g. macosx-x64 or macosx-aarch64")
+    su.add_argument("--force", action="store_true", help="re-check every package")
+    su.set_defaults(fn=cmd_setup)
 
     ui = sub.add_parser("ui", help="open the app dashboard (default when run with no command)")
     ui.add_argument("--port", type=int, default=0)
