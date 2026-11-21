@@ -280,9 +280,13 @@ def launch(name, opts=None):
 
     emu = backends.Emulator()
     if not emu.available():
-        msg = "Android isn't set up yet. Click 'Set up Android' in the dashboard, or run: apkrunner setup"
-        _notify("Apk-Runner", msg)
-        raise SystemExit(msg)
+        from . import setup_android
+        _notify("Apk-Runner", "Setting up Android for the first time (about 1.9 GB)…")
+        setup_android.setup()
+        emu = backends.Emulator()
+        if not emu.available():
+            raise SystemExit("Android setup finished but the emulator can't be found in "
+                             + setup_android.sdk_root())
     session = _session_begin()
     booted_here = not emu._device_ready()
     try:

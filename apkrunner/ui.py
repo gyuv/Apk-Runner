@@ -40,7 +40,8 @@ def _apps():
         out.append({"package": pkg, "label": e["label"],
                     "orientation": e.get("override") or e.get("orientation") or "auto",
                     "icon": os.path.exists(os.path.join(macapp.ICONS, pkg + ".img")),
-                    "running": bool(p and p.poll() is None), "error": error})
+                    "running": bool(p and p.poll() is None) or pkg in WAITING,
+                    "waiting": pkg in WAITING, "error": None if pkg in WAITING else error})
     return out
 
 
@@ -66,7 +67,35 @@ def _runtime():
             "needs_setup": b is None, "setup": prog}
 
 
+WAITING = set()  # apps the user opened before Android was ready; opened when setup finishes
+
+
+def _needs_setup():
+    return backends.pick() is None
+
+
+def _auto_setup_loop():
+    """Set up Android without being asked, retry on failure, then open any waiting apps."""
+    tries = 0
+    while True:
+        st = setup_android.PROGRESS.get("state")
+        if _needs_setup() and st in ("idle", "error") and tries < 4:
+            if st == "error":
+                time.sleep(20 * tries)  # back off before retrying a failed download
+            tries += 1
+            setup_android.start_in_background()
+        elif not _needs_setup():
+            tries = 0
+            for pkg in list(WAITING):
+                WAITING.discard(pkg)
+                _launch(pkg)
+        time.sleep(2)
+
+
 def _launch(pkg):
+    if _needs_setup():
+        WAITING.add(pkg)
+        return
     with LOCK:
         p = RUNNING.get(pkg)
         if p and p.poll() is None:
@@ -202,7 +231,8 @@ def _existing():
 def _idle_watch(srv):
     while True:
         time.sleep(15)
-        if time.time() - LAST_SEEN[0] > IDLE_EXIT and not any(
+        busy = WAITING or setup_android.PROGRESS.get("state") == "running"
+        if not busy and time.time() - LAST_SEEN[0] > IDLE_EXIT and not any(
                 p.poll() is None for p in RUNNING.values()):
             srv.shutdown()
             return
@@ -225,6 +255,7 @@ def serve(port=0, open_browser=True, idle_exit=None):
         idle_exit = not sys.stdin or not sys.stdin.isatty()
     if idle_exit:
         threading.Thread(target=_idle_watch, args=(srv,), daemon=True).start()
+    threading.Thread(target=_auto_setup_loop, daemon=True).start()
     if open_browser:
         threading.Timer(0.3, webbrowser.open, (url,)).start()
     try:
@@ -303,21 +334,22 @@ const api=(p,o={})=>fetch(p,{...o,headers:{'X-Token':T,...(o.headers||{})}}).the
 const $=s=>document.querySelector(s);
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),3500)}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+let d0=null;
 async function load(){
-  const d=await api('/api/apps');
+  const d=await api('/api/apps');d0=d;
   const rt=d.runtime,st=rt.setup||{};
   $('#rt').innerHTML=rt.backend?`<span class="dot"></span>Runtime: ${esc(rt.backend)} · v${esc(rt.version)}`:`<span class="dot off"></span>Android not set up · v${esc(rt.version)}`;
   const box=$('#setup');
   if(st.state==='running'){
     const pct=st.total?Math.round(100*st.done/st.total):0;
-    box.innerHTML=`<h3>Setting up Android…</h3><p>${esc(st.step||'')}${st.total?` — ${(st.done/1048576).toFixed(0)} of ${(st.total/1048576).toFixed(0)} MB`:''}</p><div class="bar"><i style="width:${pct}%"></i></div><p>You can keep using this page. This happens only once.</p>`;
+    box.innerHTML=`<h3>Setting up Android…</h3><p>${esc(st.step||'')}${st.total?` — ${(st.done/1048576).toFixed(0)} of ${(st.total/1048576).toFixed(0)} MB`:''}</p><div class="bar"><i style="width:${pct}%"></i></div><p>Apps you open now will start by themselves when it's ready. This happens only once.</p>`;
     box.className='setup show';
   }else if(st.state==='error'){
-    box.innerHTML=`<h3>Android setup didn't finish</h3><p class="err">${esc(st.error||'')}</p><button class="btn" data-setup>Try again</button>`;box.className='setup show';
+    box.innerHTML=`<h3>Android setup didn't finish</h3><p class="err">${esc(st.error||'')}</p><p>Retrying automatically…</p><button class="btn ghost" data-setup>Retry now</button>`;box.className='setup show';
   }else if(st.state==='done'){
     box.innerHTML=`<h3>Android is ready</h3><p>Press Open on any app. The first start takes a few minutes while Android boots.</p>`;box.className='setup show';
   }else if(rt.needs_setup){
-    box.innerHTML=`<h3>One step before your apps can open</h3><p>Apk-Runner needs Android's runtime on this Mac. It downloads Google's official emulator and an Android 11 system (about 1.9 GB, once) — no Android Studio, Homebrew or Terminal needed.</p><button class="btn" data-setup>Set up Android</button>`;box.className='setup show';
+    box.innerHTML=`<h3>Preparing Android…</h3><p>Apk-Runner is downloading Google's Android runtime for this Mac (about 1.9 GB, one time only). Apps you open now will start by themselves when it's ready.</p><div class="bar"><i style="width:0"></i></div>`;box.className='setup show';
   }else box.className='setup';
   const g=$('#apps');
   if(!d.apps.length){g.className='';g.innerHTML='<div class="empty">No apps yet. Drop an APK above to get started.</div>';return}
@@ -327,7 +359,7 @@ async function load(){
     ${a.icon?`<img src="/api/icon?pkg=${p}&t=${encodeURIComponent(T)}" alt="" data-open="${esc(a.package)}">`:`<div class="ph" data-open="${esc(a.package)}">${esc(a.label[0]||'?')}</div>`}
     <div class="name">${esc(a.label)}</div><div class="pkg">${esc(a.package)}</div>
     ${a.error?`<div class="err">${esc(a.error)}</div>`:''}
-    <div class="row"><button class="btn" data-open="${esc(a.package)}" ${a.running?'disabled':''}>${a.running?'Running':'Open'}</button>
+    <div class="row"><button class="btn" data-open="${esc(a.package)}" ${a.running?'disabled':''}>${a.waiting?'Waiting for Android…':a.running?'Running':'Open'}</button>
     <select data-rot="${esc(a.package)}" title="Orientation">${['auto','portrait','landscape'].map(o=>`<option ${o==a.orientation?'selected':''}>${o}</option>`).join('')}</select>
     <button class="btn ghost" data-rm="${esc(a.package)}" title="Remove">Remove</button></div></div>`}).join('');
 }
@@ -335,7 +367,7 @@ document.addEventListener('click',async e=>{
   const o=e.target.closest('[data-open]'),r=e.target.closest('[data-rm]'),su=e.target.closest('[data-setup]');
   try{
     if(su){await api('/api/setup',{method:'POST'});toast('Downloading Android…');setTimeout(load,500);return}
-    if(o&&!o.disabled){await api('/api/open?pkg='+encodeURIComponent(o.dataset.open),{method:'POST'});toast('Opening… the first start can take a few minutes');setTimeout(load,800)}
+    if(o&&!o.disabled){await api('/api/open?pkg='+encodeURIComponent(o.dataset.open),{method:'POST'});toast(d0&&d0.runtime&&d0.runtime.needs_setup?'It will open as soon as Android is ready':'Opening… the first start can take a few minutes');setTimeout(load,800)}
     if(r&&confirm('Remove this app?')){await api('/api/remove?pkg='+encodeURIComponent(r.dataset.rm),{method:'POST'});toast('Removed');load()}
   }catch(err){toast(err.message)}
 });
