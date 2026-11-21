@@ -125,8 +125,13 @@ class SetupTest(unittest.TestCase):
             self.assertTrue(sa.installed())
             sdk = env["ANDROID_HOME"]
             adb = os.path.join(sdk, "platform-tools", "adb")
-            self.assertTrue(os.stat(adb).st_mode & stat.S_IXUSR)
-            self.assertEqual(os.readlink(os.path.join(sdk, "emulator", "lib", "libfoo.dylib")), "libfoo.1.dylib")
+            if os.name != "nt":  # Windows has no executable permission bit
+                self.assertTrue(os.stat(adb).st_mode & stat.S_IXUSR)
+            lib = os.path.join(sdk, "emulator", "lib", "libfoo.dylib")
+            if os.path.islink(lib):
+                self.assertEqual(os.readlink(lib), "libfoo.1.dylib")
+            else:  # no symlink rights (Windows): the target file was copied instead
+                self.assertEqual(open(lib, "rb").read(), b"lib")
             cfg = open(os.path.join(env["ANDROID_AVD_HOME"], "apkrunner.avd", "config.ini")).read()
             self.assertIn("image.sysdir.1=system-images/android-30/google_apis/x86_64/", cfg)
             sa.setup(log=lambda *_: None)  # second run: nothing to download, still fine
