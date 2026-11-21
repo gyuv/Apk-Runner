@@ -106,6 +106,11 @@ def cmd_launch(a):
     return _macapp().launch(a.app, a)
 
 
+def cmd_ui(a):
+    from . import ui
+    return ui.serve(a.port, not a.no_browser)
+
+
 def cmd_settings(a):
     m = _macapp()
     if a.key:
@@ -222,7 +227,7 @@ def main(argv=None):
     ui = sub.add_parser("ui", help="open the app dashboard (default when run with no command)")
     ui.add_argument("--port", type=int, default=0)
     ui.add_argument("--no-browser", action="store_true")
-    ui.set_defaults(fn=lambda a: __import__("apkrunner.ui", fromlist=["serve"]).serve(a.port, not a.no_browser))
+    ui.set_defaults(fn=cmd_ui)
 
     a = p.parse_args(argv)
     if a.cmd is None:

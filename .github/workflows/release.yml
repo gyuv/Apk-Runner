@@ -42,7 +42,7 @@ jobs:
       - run: python -m unittest discover -s tests -t .
       - run: pip install pyinstaller==6.11.1
       - run: python -c "from apkrunner.framework import build; build('apkrunner/framework.jar')"
-      - run: pyinstaller --onefile ${{ matrix.pyi }} --name apkrunner --paths . --add-data "apkrunner/framework.jar${{ runner.os == 'Windows' && ';' || ':' }}apkrunner" scripts/apkrunner_entry.py
+      - run: pyinstaller --onefile ${{ matrix.pyi }} --name apkrunner --collect-submodules apkrunner --paths . --add-data "apkrunner/framework.jar${{ runner.os == 'Windows' && ';' || ':' }}apkrunner" scripts/apkrunner_entry.py
       - name: Package (Windows)
         if: runner.os == 'Windows'
         run: copy dist\apkrunner.exe ${{ matrix.asset }}
@@ -56,13 +56,14 @@ jobs:
             sips -z $((s*2)) $((s*2)) icon.png --out icon.iconset/icon_${s}x${s}@2x.png
           done
           iconutil -c icns icon.iconset -o icon.icns
-          pyinstaller --windowed --noconfirm ${{ matrix.pyi }} --name Apk-Runner --icon icon.icns --osx-bundle-identifier io.github.apkrunner --paths . --add-data "apkrunner/framework.jar:apkrunner" --distpath appdist --workpath appbuild scripts/apkrunner_entry.py
+          pyinstaller --windowed --noconfirm ${{ matrix.pyi }} --name Apk-Runner --collect-submodules apkrunner --icon icon.icns --osx-bundle-identifier io.github.apkrunner --paths . --add-data "apkrunner/framework.jar:apkrunner" --distpath appdist --workpath appbuild scripts/apkrunner_entry.py
           PLIST=appdist/Apk-Runner.app/Contents/Info.plist
           VER=$(python -c 'import apkrunner; print(apkrunner.__version__)')
           /usr/libexec/PlistBuddy -c "Add :LSUIElement bool true" $PLIST
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VER" $PLIST
           codesign --force --deep -s - appdist/Apk-Runner.app
           appdist/Apk-Runner.app/Contents/MacOS/Apk-Runner --version
+          python scripts/smoke_ui.py appdist/Apk-Runner.app/Contents/MacOS/Apk-Runner
           lipo -info appdist/Apk-Runner.app/Contents/MacOS/Apk-Runner
       - name: Package (macOS dmg)
         if: runner.os == 'macOS'
@@ -78,11 +79,15 @@ jobs:
         run: cp dist/apkrunner ${{ matrix.asset }}
       - name: Smoke test
         if: runner.os != 'macOS'
-        run: ./dist/apkrunner --version
+        shell: bash
+        run: |
+          ./dist/apkrunner --version
+          python scripts/smoke_ui.py ./dist/apkrunner
       - name: Smoke test (macOS)
         if: runner.os == 'macOS'
         run: |
           dist/apkrunner --version
+          python scripts/smoke_ui.py dist/apkrunner
           lipo -info dist/apkrunner
       - uses: actions/upload-artifact@v4
         with:
