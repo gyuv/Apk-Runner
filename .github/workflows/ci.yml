@@ -20,3 +20,8 @@ jobs:
       - run: python -m unittest discover -s tests -t . -v
       - run: python scripts/build_release.py
       - run: python dist/apkrunner.pyz doctor
+      - name: Resolve real Android downloads (Intel + Apple Silicon Macs)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m apkrunner --no-update-check setup --dry-run --host macosx-x64
+          python -m apkrunner --no-update-check setup --dry-run --host macosx-aarch64

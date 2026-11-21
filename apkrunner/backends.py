@@ -18,8 +18,9 @@ def _which(*names):
 
 
 def _sdk_tool(rel):
-    for env in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
-        root = os.environ.get(env)
+    from .setup_android import sdk_root
+    roots = [os.environ.get(e) for e in ("ANDROID_HOME", "ANDROID_SDK_ROOT")] + [sdk_root()]
+    for root in roots:
         if root:
             for ext in ("", ".exe", ".bat"):
                 p = os.path.join(root, rel + ext)
@@ -55,7 +56,8 @@ class Emulator:
         return _sdk_tool("emulator/emulator") or _which("emulator")
 
     def available(self):
-        return self.adb() is not None
+        """adb plus either an emulator to start or a phone/emulator already connected."""
+        return self.adb() is not None and (self.emulator() is not None or self._device_ready())
 
     def _device_ready(self):
         out = subprocess.run([self.adb(), "devices"], capture_output=True, text=True).stdout
@@ -66,19 +68,31 @@ class Emulator:
             return
         emu = self.emulator()
         if not emu:
-            raise SystemExit("No running device and no emulator found. Install the Android SDK emulator (see README).")
+            raise SystemExit("Android isn't set up yet. Open the dashboard and click 'Set up Android', "
+                             "or run: apkrunner setup")
         if not avd:
             avds = subprocess.run([emu, "-list-avds"], capture_output=True, text=True).stdout.split()
             if not avds:
-                raise SystemExit("No AVD found. Create one: see README 'Intel Mac / Windows setup'.")
-            avd = avds[0]
+                raise SystemExit("No Android virtual device yet. Run: apkrunner setup")
+            avd = "apkrunner" if "apkrunner" in avds else avds[0]
         args = [emu, "-avd", avd, "-no-snapshot-save", "-no-boot-anim"]
         if lite:
             args += ["-memory", "2048", "-no-audio", "-gpu", "auto"]
-        subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.call([self.adb(), "wait-for-device"])
-        while subprocess.run([self.adb(), "shell", "getprop", "sys.boot_completed"],
-                             capture_output=True, text=True).stdout.strip() != "1":
+        log_path = os.path.join(os.path.expanduser("~"), ".apkrunner", "emulator.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        log = open(log_path, "w")
+        proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        while True:  # wait for Android to finish booting; fail fast if the emulator dies
+            if proc.poll() is not None:
+                log.close()
+                with open(log_path, errors="replace") as f:
+                    tail = [l.strip() for l in f.read().splitlines() if l.strip()][-3:]
+                raise SystemExit("The Android emulator stopped while starting:\n  " + "\n  ".join(tail)
+                                 + "\n(full log: %s)" % log_path)
+            out = subprocess.run([self.adb(), "shell", "getprop", "sys.boot_completed"],
+                                 capture_output=True, text=True).stdout.strip()
+            if out == "1":
+                return
             time.sleep(2)
 
     def run(self, apk, info, opts):
